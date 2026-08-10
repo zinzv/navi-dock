@@ -17,18 +17,14 @@ COPY --from=frontend-builder /app/frontend/dist ./web
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/navidock ./cmd/server
 
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates tzdata \
-  && adduser -D -H -u 10001 navidock
+RUN apk add --no-cache ca-certificates tzdata su-exec wget
 WORKDIR /app
 COPY --from=backend-builder /out/navidock /app/navidock
 COPY --from=backend-builder /src/web /app/web
-# Default runtime layout under /data (bind-mounted in compose; empty dirs only — no user data baked in)
-RUN mkdir -p /data/database /data/assets/icons /data/assets/wallpapers \
-  && chown -R navidock:navidock /data /app
-USER navidock
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 ENV SERVER_PORT=7530
 EXPOSE 7530
-VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget -qO- http://127.0.0.1:7530/api/health || exit 1
-ENTRYPOINT ["/app/navidock"]
+ENTRYPOINT ["/entrypoint.sh"]

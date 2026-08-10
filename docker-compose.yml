@@ -1,14 +1,19 @@
-name: navidock
+name: navi-dock
 
 services:
-  navidock:
+  navi-dock:
     build:
       context: .
       dockerfile: Dockerfile
-    image: navidock:latest
-    container_name: navidock
+    image: navi-dock:latest
+    container_name: navi-dock
     ports:
       - "${SERVER_PORT:-7530}:7530"
+    env_file:
+      - .env
+    environment:
+      PUID: ${PUID}
+      PGID: ${PGID}
     volumes:
       - ./data:/data
     restart: unless-stopped

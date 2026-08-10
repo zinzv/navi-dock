@@ -25,12 +25,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Or:
-
-```bash
-./scripts/compose-up.sh
-# Windows: .\scripts\compose-up.ps1
-```
+**NAS / bind mount:** edit `.env` and set `PUID` / `PGID` to match the host data directory owner (`id <user>`).
 
 Open: http://localhost:7530
 

@@ -18,10 +18,13 @@ import (
 func main() {
 	cfg := config.Load()
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
-		log.Fatalf("create data dir: %v", err)
+		log.Fatalf("create data dir: %v (uid=%d gid=%d)", err, os.Getuid(), os.Getgid())
 	}
 	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0o755); err != nil {
-		log.Fatalf("create database dir: %v", err)
+		log.Fatalf(
+			"create database dir: %v (uid=%d gid=%d, PUID=%s PGID=%s)",
+			err, os.Getuid(), os.Getgid(), os.Getenv("PUID"), os.Getenv("PGID"),
+		)
 	}
 	migrateLegacyDB(cfg.DataDir, cfg.DBPath)
 
@@ -34,9 +37,6 @@ func main() {
 	settingsSvc := service.NewSettingsService(settingsRepo)
 
 	navRepo := repository.NewNavigationRepo(db)
-	if err := navRepo.SeedIfEmpty(); err != nil {
-		log.Fatalf("seed navigation: %v", err)
-	}
 	navSvc := service.NewNavigationService(navRepo)
 
 	handler := api.NewHandler(settingsSvc, navSvc, cfg.DataDir)
