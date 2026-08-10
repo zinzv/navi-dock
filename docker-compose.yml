@@ -1,0 +1,14 @@
+name: navidock
+
+services:
+  navidock:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: navidock:latest
+    container_name: navidock
+    ports:
+      - "${SERVER_PORT:-7530}:7530"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
