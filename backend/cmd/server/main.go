@@ -39,7 +39,10 @@ func main() {
 	navRepo := repository.NewNavigationRepo(db)
 	navSvc := service.NewNavigationService(navRepo)
 
-	handler := api.NewHandler(settingsSvc, navSvc, cfg.DataDir)
+	userRepo := repository.NewUserRepo(db)
+	authSvc := service.NewAuthService(userRepo, cfg.AuthSecret)
+
+	handler := api.NewHandler(settingsSvc, navSvc, authSvc, cfg.DataDir)
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
@@ -82,7 +85,7 @@ func migrateBackgroundsToWallpapers(dataDir string, settingsSvc *service.Setting
 	entries, err := os.ReadDir(oldDir)
 	if err != nil {
 		// Still rewrite setting path if needed even when folder already gone.
-		rewriteBackgroundImagePath(settingsSvc)
+		rewriteBackgroundImagePath(settingsSvc, nil)
 		return
 	}
 	if err := os.MkdirAll(newDir, 0o755); err != nil {
@@ -114,21 +117,7 @@ func migrateBackgroundsToWallpapers(dataDir string, settingsSvc *service.Setting
 		moved++
 	}
 
-	if settings, err := settingsSvc.Get(); err == nil && strings.HasPrefix(settings.BackgroundImage, "/assets/backgrounds/") {
-		oldName := path.Base(settings.BackgroundImage)
-		newName := oldName
-		if mapped, ok := renames[oldName]; ok {
-			newName = mapped
-		}
-		newPath := "/assets/wallpapers/" + newName
-		if _, err := settingsSvc.SetBackgroundImage(newPath); err != nil {
-			log.Printf("migrate background_image setting: %v", err)
-		} else {
-			log.Printf("migrated background_image to %s", newPath)
-		}
-	} else {
-		rewriteBackgroundImagePath(settingsSvc)
-	}
+	rewriteBackgroundImagePath(settingsSvc, renames)
 
 	if left, err := os.ReadDir(oldDir); err == nil && len(left) == 0 {
 		_ = os.Remove(oldDir)
@@ -138,17 +127,28 @@ func migrateBackgroundsToWallpapers(dataDir string, settingsSvc *service.Setting
 	}
 }
 
-func rewriteBackgroundImagePath(settingsSvc *service.SettingsService) {
-	settings, err := settingsSvc.Get()
-	if err != nil || !strings.HasPrefix(settings.BackgroundImage, "/assets/backgrounds/") {
+func rewriteBackgroundImagePath(settingsSvc *service.SettingsService, renames map[string]string) {
+	rows, err := settingsSvc.ListByKey("background_image")
+	if err != nil {
+		log.Printf("migrate background_image setting: list: %v", err)
 		return
 	}
-	newPath := "/assets/wallpapers/" + path.Base(settings.BackgroundImage)
-	if _, err := settingsSvc.SetBackgroundImage(newPath); err != nil {
-		log.Printf("migrate background_image setting: %v", err)
-		return
+	for _, row := range rows {
+		if !strings.HasPrefix(row.Value, "/assets/backgrounds/") {
+			continue
+		}
+		oldName := path.Base(row.Value)
+		newName := oldName
+		if mapped, ok := renames[oldName]; ok {
+			newName = mapped
+		}
+		newPath := "/assets/wallpapers/" + newName
+		if err := settingsSvc.UpsertRaw(row.UserID, "background_image", newPath); err != nil {
+			log.Printf("migrate background_image setting for user %s: %v", row.UserID, err)
+			continue
+		}
+		log.Printf("migrated background_image for user %s to %s", row.UserID, newPath)
 	}
-	log.Printf("migrated background_image to %s", newPath)
 }
 
 // migrateSiteAssetsToIcons folds legacy /assets/site into the icons gallery library.
@@ -188,17 +188,25 @@ func migrateSiteAssetsToIcons(dataDir string, settingsSvc *service.SettingsServi
 		moved++
 	}
 
-	if settings, err := settingsSvc.Get(); err == nil && strings.HasPrefix(settings.SiteIcon, "/assets/site/") {
-		oldName := path.Base(settings.SiteIcon)
-		newName := oldName
-		if mapped, ok := renames[oldName]; ok {
-			newName = mapped
-		}
-		newPath := "/assets/icons/" + newName
-		if _, err := settingsSvc.SetSiteIcon(newPath); err != nil {
-			log.Printf("migrate site_icon setting: %v", err)
-		} else {
-			log.Printf("migrated site_icon to %s", newPath)
+	rows, err := settingsSvc.ListByKey("site_icon")
+	if err != nil {
+		log.Printf("migrate site_icon setting: list: %v", err)
+	} else {
+		for _, row := range rows {
+			if !strings.HasPrefix(row.Value, "/assets/site/") {
+				continue
+			}
+			oldName := path.Base(row.Value)
+			newName := oldName
+			if mapped, ok := renames[oldName]; ok {
+				newName = mapped
+			}
+			newPath := "/assets/icons/" + newName
+			if err := settingsSvc.UpsertRaw(row.UserID, "site_icon", newPath); err != nil {
+				log.Printf("migrate site_icon setting for user %s: %v", row.UserID, err)
+				continue
+			}
+			log.Printf("migrated site_icon for user %s to %s", row.UserID, newPath)
 		}
 	}
 

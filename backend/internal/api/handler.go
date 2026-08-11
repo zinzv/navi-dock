@@ -17,41 +17,56 @@ import (
 type Handler struct {
 	settings   *service.SettingsService
 	navigation *service.NavigationService
+	auth       *service.AuthService
 	dataDir    string
 }
 
-func NewHandler(settings *service.SettingsService, navigation *service.NavigationService, dataDir string) *Handler {
-	return &Handler{settings: settings, navigation: navigation, dataDir: dataDir}
+func NewHandler(
+	settings *service.SettingsService,
+	navigation *service.NavigationService,
+	auth *service.AuthService,
+	dataDir string,
+) *Handler {
+	return &Handler{settings: settings, navigation: navigation, auth: auth, dataDir: dataDir}
 }
 
 func (h *Handler) Register(r *gin.Engine) {
 	api := r.Group("/api")
 	{
 		api.GET("/health", h.Health)
-		api.GET("/settings", h.GetSettings)
-		api.PUT("/settings", h.UpdateSettings)
-		api.POST("/settings/background", h.UploadBackground)
-		api.DELETE("/settings/background", h.ClearBackground)
-		api.POST("/settings/site-icon", h.UploadSiteIcon)
-		api.DELETE("/settings/site-icon", h.ClearSiteIcon)
-		api.GET("/assets/:kind", h.ListAssets)
-		api.POST("/assets/:kind", h.UploadAsset)
-		api.GET("/navigation", h.GetNavigation)
 
-		api.GET("/groups", h.ListGroups)
-		api.POST("/groups", h.CreateGroup)
-		api.PUT("/groups/sort", h.SortGroups)
-		api.PUT("/groups/:id", h.UpdateGroup)
-		api.DELETE("/groups/:id", h.DeleteGroup)
+		api.GET("/auth/status", h.optionalAuth, h.AuthStatus)
+		api.POST("/auth/login", h.Login)
+		api.PUT("/auth/password", h.requireAuth, h.ChangePassword)
 
-		api.POST("/items", h.CreateItem)
-		api.PUT("/items/sort", h.SortItems)
-		api.PUT("/items/:id", h.UpdateItem)
-		api.DELETE("/items/:id", h.DeleteItem)
+		api.GET("/users", h.requireAuth, h.ListUsers)
+		api.POST("/users", h.optionalAuth, h.CreateUser)
+		api.DELETE("/users/:id", h.requireAuth, h.DeleteUser)
 
-		api.POST("/import/sunpanel", h.ImportSunPanel)
-		api.GET("/export", h.ExportNavigation)
-		api.POST("/import", h.ImportNavigation)
+		api.GET("/settings", h.requireAuth, h.GetSettings)
+		api.PUT("/settings", h.requireAuth, h.UpdateSettings)
+		api.POST("/settings/background", h.requireAuth, h.UploadBackground)
+		api.DELETE("/settings/background", h.requireAuth, h.ClearBackground)
+		api.POST("/settings/site-icon", h.requireAuth, h.UploadSiteIcon)
+		api.DELETE("/settings/site-icon", h.requireAuth, h.ClearSiteIcon)
+		api.GET("/assets/:kind", h.requireAuth, h.ListAssets)
+		api.POST("/assets/:kind", h.requireAuth, h.UploadAsset)
+		api.GET("/navigation", h.requireAuth, h.GetNavigation)
+
+		api.GET("/groups", h.requireAuth, h.ListGroups)
+		api.POST("/groups", h.requireAuth, h.CreateGroup)
+		api.PUT("/groups/sort", h.requireAuth, h.SortGroups)
+		api.PUT("/groups/:id", h.requireAuth, h.UpdateGroup)
+		api.DELETE("/groups/:id", h.requireAuth, h.DeleteGroup)
+
+		api.POST("/items", h.requireAuth, h.CreateItem)
+		api.PUT("/items/sort", h.requireAuth, h.SortItems)
+		api.PUT("/items/:id", h.requireAuth, h.UpdateItem)
+		api.DELETE("/items/:id", h.requireAuth, h.DeleteItem)
+
+		api.POST("/import/sunpanel", h.requireAuth, h.ImportSunPanel)
+		api.GET("/export", h.requireAuth, h.ExportNavigation)
+		api.POST("/import", h.requireAuth, h.ImportNavigation)
 	}
 }
 
@@ -59,8 +74,29 @@ func (h *Handler) Health(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "naviDock"})
 }
 
+func requireCurrentUser(c *gin.Context) *model.User {
+	user := currentUser(c)
+	if user == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": service.ErrUnauthorized.Error()})
+		return nil
+	}
+	return user
+}
+
+func userAssetDir(dataDir, userID, dirName string) string {
+	return filepath.Join(dataDir, "assets", "users", userID, dirName)
+}
+
+func userAssetURL(userID, dirName, name string) string {
+	return "/assets/users/" + userID + "/" + dirName + "/" + name
+}
+
 func (h *Handler) GetSettings(c *gin.Context) {
-	settings, err := h.settings.Get()
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
+	settings, err := h.settings.Get(user.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
@@ -69,12 +105,16 @@ func (h *Handler) GetSettings(c *gin.Context) {
 }
 
 func (h *Handler) UpdateSettings(c *gin.Context) {
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
 	var body model.AppSettings
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid json"})
 		return
 	}
-	settings, err := h.settings.Update(body)
+	settings, err := h.settings.Update(user.ID, body)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
@@ -83,6 +123,10 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 }
 
 func (h *Handler) UploadBackground(c *gin.Context) {
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
 	file, err := c.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "missing file"})
@@ -100,7 +144,7 @@ func (h *Handler) UploadBackground(c *gin.Context) {
 		return
 	}
 
-	dir := filepath.Join(h.dataDir, "assets", "wallpapers")
+	dir := userAssetDir(h.dataDir, user.ID, "wallpapers")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
@@ -113,8 +157,8 @@ func (h *Handler) UploadBackground(c *gin.Context) {
 		return
 	}
 
-	publicPath := "/assets/wallpapers/" + name
-	settings, err := h.settings.SetBackgroundImage(publicPath)
+	publicPath := userAssetURL(user.ID, "wallpapers", name)
+	settings, err := h.settings.SetBackgroundImage(user.ID, publicPath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
@@ -123,7 +167,11 @@ func (h *Handler) UploadBackground(c *gin.Context) {
 }
 
 func (h *Handler) ClearBackground(c *gin.Context) {
-	settings, err := h.settings.SetBackgroundImage("")
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
+	settings, err := h.settings.SetBackgroundImage(user.ID, "")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
@@ -132,6 +180,10 @@ func (h *Handler) ClearBackground(c *gin.Context) {
 }
 
 func (h *Handler) UploadSiteIcon(c *gin.Context) {
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
 	file, err := c.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "missing file"})
@@ -149,8 +201,7 @@ func (h *Handler) UploadSiteIcon(c *gin.Context) {
 		return
 	}
 
-	// Site icons share the icons gallery library (no separate /assets/site).
-	dir := filepath.Join(h.dataDir, "assets", "icons")
+	dir := userAssetDir(h.dataDir, user.ID, "icons")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
@@ -163,8 +214,8 @@ func (h *Handler) UploadSiteIcon(c *gin.Context) {
 		return
 	}
 
-	publicPath := "/assets/icons/" + name
-	settings, err := h.settings.SetSiteIcon(publicPath)
+	publicPath := userAssetURL(user.ID, "icons", name)
+	settings, err := h.settings.SetSiteIcon(user.ID, publicPath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
@@ -173,7 +224,11 @@ func (h *Handler) UploadSiteIcon(c *gin.Context) {
 }
 
 func (h *Handler) ClearSiteIcon(c *gin.Context) {
-	settings, err := h.settings.SetSiteIcon("")
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
+	settings, err := h.settings.SetSiteIcon(user.ID, "")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
@@ -193,12 +248,16 @@ func assetKindDir(kind string) (dirName string, ok bool) {
 }
 
 func (h *Handler) ListAssets(c *gin.Context) {
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
 	dirName, ok := assetKindDir(c.Param("kind"))
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "kind must be icons or wallpapers"})
 		return
 	}
-	dir := filepath.Join(h.dataDir, "assets", dirName)
+	dir := userAssetDir(h.dataDir, user.ID, dirName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
@@ -228,7 +287,7 @@ func (h *Handler) ListAssets(c *gin.Context) {
 		}
 		items = append(items, assetItem{
 			Name: name,
-			URL:  "/assets/" + dirName + "/" + name,
+			URL:  userAssetURL(user.ID, dirName, name),
 		})
 	}
 	// newest first by name prefix timestamp when possible
@@ -239,6 +298,10 @@ func (h *Handler) ListAssets(c *gin.Context) {
 }
 
 func (h *Handler) UploadAsset(c *gin.Context) {
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
 	dirName, ok := assetKindDir(c.Param("kind"))
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "kind must be icons or wallpapers"})
@@ -262,7 +325,7 @@ func (h *Handler) UploadAsset(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "unsupported image type"})
 		return
 	}
-	dir := filepath.Join(h.dataDir, "assets", dirName)
+	dir := userAssetDir(h.dataDir, user.ID, dirName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
@@ -277,12 +340,16 @@ func (h *Handler) UploadAsset(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
 	}
-	publicPath := "/assets/" + dirName + "/" + name
+	publicPath := userAssetURL(user.ID, dirName, name)
 	c.JSON(http.StatusOK, gin.H{"kind": dirName, "name": name, "url": publicPath})
 }
 
 func (h *Handler) GetNavigation(c *gin.Context) {
-	groups, err := h.navigation.ListNavigation()
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
+	groups, err := h.navigation.ListNavigation(user.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
@@ -291,7 +358,11 @@ func (h *Handler) GetNavigation(c *gin.Context) {
 }
 
 func (h *Handler) ListGroups(c *gin.Context) {
-	groups, err := h.navigation.ListGroups()
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
+	groups, err := h.navigation.ListGroups(user.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
@@ -300,12 +371,16 @@ func (h *Handler) ListGroups(c *gin.Context) {
 }
 
 func (h *Handler) CreateGroup(c *gin.Context) {
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
 	var body model.CreateGroupInput
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid json"})
 		return
 	}
-	group, err := h.navigation.CreateGroup(body)
+	group, err := h.navigation.CreateGroup(user.ID, body)
 	if err == service.ErrGroupNameEmpty {
 		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
@@ -318,13 +393,17 @@ func (h *Handler) CreateGroup(c *gin.Context) {
 }
 
 func (h *Handler) UpdateGroup(c *gin.Context) {
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
 	id := c.Param("id")
 	var body model.UpdateGroupInput
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid json"})
 		return
 	}
-	group, err := h.navigation.UpdateGroup(id, body)
+	group, err := h.navigation.UpdateGroup(user.ID, id, body)
 	if err == service.ErrGroupNameEmpty {
 		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
@@ -341,8 +420,12 @@ func (h *Handler) UpdateGroup(c *gin.Context) {
 }
 
 func (h *Handler) DeleteGroup(c *gin.Context) {
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
 	id := c.Param("id")
-	err := h.navigation.DeleteGroup(id)
+	err := h.navigation.DeleteGroup(user.ID, id)
 	if err == service.ErrGroupNotFound {
 		c.JSON(http.StatusNotFound, gin.H{"message": err.Error()})
 		return
@@ -355,16 +438,20 @@ func (h *Handler) DeleteGroup(c *gin.Context) {
 }
 
 func (h *Handler) SortGroups(c *gin.Context) {
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
 	var body model.SortGroupsInput
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid json"})
 		return
 	}
-	if err := h.navigation.SortGroups(body.IDs); err != nil {
+	if err := h.navigation.SortGroups(user.ID, body.IDs); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}
-	groups, err := h.navigation.ListGroups()
+	groups, err := h.navigation.ListGroups(user.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
@@ -373,12 +460,16 @@ func (h *Handler) SortGroups(c *gin.Context) {
 }
 
 func (h *Handler) SortItems(c *gin.Context) {
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
 	var body model.SortItemsInput
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid json"})
 		return
 	}
-	if err := h.navigation.SortItems(body.GroupID, body.IDs); err != nil {
+	if err := h.navigation.SortItems(user.ID, body.GroupID, body.IDs); err != nil {
 		switch err {
 		case service.ErrGroupNotFound:
 			c.JSON(http.StatusNotFound, gin.H{"message": err.Error()})
@@ -391,12 +482,16 @@ func (h *Handler) SortItems(c *gin.Context) {
 }
 
 func (h *Handler) CreateItem(c *gin.Context) {
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
 	var body model.UpsertItemInput
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid json"})
 		return
 	}
-	item, err := h.navigation.CreateItem(body)
+	item, err := h.navigation.CreateItem(user.ID, body)
 	switch err {
 	case service.ErrItemNameEmpty, service.ErrItemURLEmpty:
 		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
@@ -413,13 +508,17 @@ func (h *Handler) CreateItem(c *gin.Context) {
 }
 
 func (h *Handler) UpdateItem(c *gin.Context) {
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
 	id := c.Param("id")
 	var body model.UpsertItemInput
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid json"})
 		return
 	}
-	item, err := h.navigation.UpdateItem(id, body)
+	item, err := h.navigation.UpdateItem(user.ID, id, body)
 	switch err {
 	case service.ErrItemNameEmpty, service.ErrItemURLEmpty:
 		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
@@ -436,8 +535,12 @@ func (h *Handler) UpdateItem(c *gin.Context) {
 }
 
 func (h *Handler) DeleteItem(c *gin.Context) {
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
 	id := c.Param("id")
-	err := h.navigation.DeleteItem(id)
+	err := h.navigation.DeleteItem(user.ID, id)
 	if err == service.ErrItemNotFound {
 		c.JSON(http.StatusNotFound, gin.H{"message": err.Error()})
 		return
@@ -450,6 +553,10 @@ func (h *Handler) DeleteItem(c *gin.Context) {
 }
 
 func (h *Handler) ImportSunPanel(c *gin.Context) {
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
 	var body model.SunPanelExport
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid sun-panel json"})
@@ -459,7 +566,7 @@ func (h *Handler) ImportSunPanel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "no icons/groups in export"})
 		return
 	}
-	groups, items, err := h.navigation.ImportSunPanel(body)
+	groups, items, err := h.navigation.ImportSunPanel(user.ID, body)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
@@ -474,7 +581,11 @@ func (h *Handler) ImportSunPanel(c *gin.Context) {
 }
 
 func (h *Handler) ExportNavigation(c *gin.Context) {
-	payload, err := h.navigation.ExportNavigation()
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
+	payload, err := h.navigation.ExportNavigation(user.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
@@ -485,6 +596,10 @@ func (h *Handler) ExportNavigation(c *gin.Context) {
 }
 
 func (h *Handler) ImportNavigation(c *gin.Context) {
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
 	raw, err := c.GetRawData()
 	if err != nil || len(raw) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "empty body"})
@@ -507,7 +622,7 @@ func (h *Handler) ImportNavigation(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"message": "no icons/groups in export"})
 			return
 		}
-		groups, items, err := h.navigation.ImportSunPanel(body)
+		groups, items, err := h.navigation.ImportSunPanel(user.ID, body)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 			return
@@ -530,7 +645,7 @@ func (h *Handler) ImportNavigation(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "no groups in export"})
 		return
 	}
-	groups, items, err := h.navigation.ImportNaviDock(body)
+	groups, items, err := h.navigation.ImportNaviDock(user.ID, body)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return

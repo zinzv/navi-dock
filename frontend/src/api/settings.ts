@@ -1,3 +1,5 @@
+import { apiRequest, apiUpload } from './http'
+
 export type ThemeMode = 'light' | 'dark' | 'system'
 export type NetworkMode = 'auto' | 'internal' | 'external'
 
@@ -38,90 +40,74 @@ export interface NavGroup {
   item_count?: number
 }
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
-    ...init,
-  })
-  if (!res.ok) {
-    throw new Error(`request failed: ${res.status}`)
-  }
-  return res.json() as Promise<T>
-}
-
 export function fetchSettings() {
-  return request<AppSettings>('/api/settings')
+  return apiRequest<AppSettings>('/api/settings')
 }
 
 export function updateSettings(body: AppSettings) {
-  return request<AppSettings>('/api/settings', {
+  return apiRequest<AppSettings>('/api/settings', {
     method: 'PUT',
     body: JSON.stringify(body),
   })
 }
 
-export async function uploadBackground(file: File) {
-  const form = new FormData()
-  form.append('file', file)
-  const res = await fetch('/api/settings/background', {
-    method: 'POST',
-    body: form,
-  })
-  if (!res.ok) {
-    throw new Error(`upload failed: ${res.status}`)
-  }
-  return res.json() as Promise<AppSettings>
+export function uploadBackground(file: File) {
+  return apiUpload<AppSettings>('/api/settings/background', file)
 }
 
 export function clearBackground() {
-  return request<AppSettings>('/api/settings/background', {
+  return apiRequest<AppSettings>('/api/settings/background', {
     method: 'DELETE',
   })
 }
 
+export function uploadSiteIcon(file: File) {
+  return apiUpload<AppSettings>('/api/settings/site-icon', file)
+}
+
 export function clearSiteIcon() {
-  return request<AppSettings>('/api/settings/site-icon', {
+  return apiRequest<AppSettings>('/api/settings/site-icon', {
     method: 'DELETE',
   })
 }
 
 export function fetchNavigation() {
-  return request<{ groups: NavGroup[] }>('/api/navigation')
+  return apiRequest<{ groups: NavGroup[] }>('/api/navigation')
 }
 
 export function fetchGroups() {
-  return request<{ groups: NavGroup[] }>('/api/groups')
+  return apiRequest<{ groups: NavGroup[] }>('/api/groups')
 }
 
 export function createGroup(body: { name: string; icon?: string }) {
-  return request<NavGroup>('/api/groups', {
+  return apiRequest<NavGroup>('/api/groups', {
     method: 'POST',
     body: JSON.stringify(body),
   })
 }
 
 export function updateGroup(id: string, body: { name: string; icon?: string }) {
-  return request<NavGroup>(`/api/groups/${id}`, {
+  return apiRequest<NavGroup>(`/api/groups/${id}`, {
     method: 'PUT',
     body: JSON.stringify(body),
   })
 }
 
 export function deleteGroup(id: string) {
-  return request<{ ok: boolean }>(`/api/groups/${id}`, {
+  return apiRequest<{ ok: boolean }>(`/api/groups/${id}`, {
     method: 'DELETE',
   })
 }
 
 export function sortGroups(ids: string[]) {
-  return request<{ groups: NavGroup[] }>('/api/groups/sort', {
+  return apiRequest<{ groups: NavGroup[] }>('/api/groups/sort', {
     method: 'PUT',
     body: JSON.stringify({ ids }),
   })
 }
 
 export function sortItems(groupId: string, ids: string[]) {
-  return request<{ ok: boolean }>('/api/items/sort', {
+  return apiRequest<{ ok: boolean }>('/api/items/sort', {
     method: 'PUT',
     body: JSON.stringify({ group_id: groupId, ids }),
   })
@@ -139,21 +125,21 @@ export type UpsertItemPayload = {
 }
 
 export function updateItem(id: string, body: UpsertItemPayload) {
-  return request<NavItem>(`/api/items/${id}`, {
+  return apiRequest<NavItem>(`/api/items/${id}`, {
     method: 'PUT',
     body: JSON.stringify(body),
   })
 }
 
 export function createItem(body: UpsertItemPayload) {
-  return request<NavItem>('/api/items', {
+  return apiRequest<NavItem>('/api/items', {
     method: 'POST',
     body: JSON.stringify(body),
   })
 }
 
 export function deleteItem(id: string) {
-  return request<{ ok: boolean }>(`/api/items/${id}`, {
+  return apiRequest<{ ok: boolean }>(`/api/items/${id}`, {
     method: 'DELETE',
   })
 }
@@ -166,20 +152,11 @@ export interface AssetItem {
 }
 
 export function listAssets(kind: AssetKind) {
-  return request<{ kind: AssetKind; items: AssetItem[] }>(`/api/assets/${kind}`)
+  return apiRequest<{ kind: AssetKind; items: AssetItem[] }>(`/api/assets/${kind}`)
 }
 
-export async function uploadAsset(kind: AssetKind, file: File) {
-  const form = new FormData()
-  form.append('file', file)
-  const res = await fetch(`/api/assets/${kind}`, {
-    method: 'POST',
-    body: form,
-  })
-  if (!res.ok) {
-    throw new Error(`upload failed: ${res.status}`)
-  }
-  return res.json() as Promise<{ kind: AssetKind; name: string; url: string }>
+export function uploadAsset(kind: AssetKind, file: File) {
+  return apiUpload<{ kind: AssetKind; name: string; url: string }>(`/api/assets/${kind}`, file)
 }
 
 export interface ImportResult {
@@ -190,11 +167,7 @@ export interface ImportResult {
 }
 
 export async function exportNavigation() {
-  const res = await fetch('/api/export')
-  if (!res.ok) {
-    throw new Error(`export failed: ${res.status}`)
-  }
-  const data = await res.json()
+  const data = await apiRequest<unknown>('/api/export')
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -216,20 +189,8 @@ export async function importNavigation(file: File) {
   } catch {
     throw new Error('invalid json')
   }
-  const res = await fetch('/api/import', {
+  return apiRequest<ImportResult>('/api/import', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    let message = `import failed: ${res.status}`
-    try {
-      const err = (await res.json()) as { message?: string }
-      if (err.message) message = err.message
-    } catch {
-      /* ignore */
-    }
-    throw new Error(message)
-  }
-  return res.json() as Promise<ImportResult>
 }

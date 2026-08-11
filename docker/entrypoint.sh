@@ -6,11 +6,9 @@ if [ -z "${PGID}" ] && [ -n "${PGUID}" ]; then
   PGID="${PGUID}"
 fi
 
-if [ -z "${PUID}" ] || [ -z "${PGID}" ]; then
-  echo "navi-dock: PUID and PGID are required." >&2
-  echo "Set them to the owner of the bind-mounted /data directory (see: id <user>)." >&2
-  exit 1
-fi
+# Defaults match common desktop/LinuxServer convention
+PUID="${PUID:-1000}"
+PGID="${PGID:-1000}"
 
 echo "----------------------------------------"
 echo "NaviDock"

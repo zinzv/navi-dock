@@ -6,7 +6,7 @@ Group your self-hosted apps, switch internal/external links, customize theme and
 
 ## Quick start
 
-**Required on NAS:** set `PUID` and `PGID` to the owner of the bind-mounted data directory.
+**Optional on NAS:** set `PUID` / `PGID` to the owner of the bind-mounted data directory (default `1000`).
 
 ```bash
 id zeven   # example: uid=1026 gid=100
@@ -22,14 +22,14 @@ services:
     ports:
       - "7530:7530"
     environment:
-      PUID: <your-puid>
-      PGID: <your-pgid>
+      PUID: 1000
+      PGID: 1000
     volumes:
       - /volume1/docker/navi:/data
     restart: unless-stopped
 ```
 
-**Synology Container Manager:** add environment variables `PUID` and `PGID`, and set **Entrypoint** to `/entrypoint.sh`.
+**Synology Container Manager:** optionally set `PUID` / `PGID`, and set **Entrypoint** to `/entrypoint.sh`.
 
 **NAS permission fix (run once on the host, via SSH):**
 
@@ -63,8 +63,8 @@ Open: http://localhost:7530
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `PUID` | **Yes** | UID of the host user that owns the bind-mounted `/data` directory |
-| `PGID` | **Yes** | GID of the host user that owns the bind-mounted `/data` directory |
+| `PUID` | No (default `1000`) | UID of the host user that owns the bind-mounted `/data` directory |
+| `PGID` | No (default `1000`) | GID of the host user that owns the bind-mounted `/data` directory |
 
 Find values on the NAS host:
 
@@ -85,7 +85,7 @@ Persist everything with one volume mount:
 | `/data/assets/icons` | Uploaded icons |
 | `/data/assets/wallpapers` | Uploaded wallpapers |
 
-No `privileged` mode needed. Set `PUID` / `PGID` to match the host `./data` owner on NAS.
+No `privileged` mode needed. On NAS, set `PUID` / `PGID` to match the host `./data` owner when the default `1000` does not fit.
 
 **Synology:** In Container Manager → Execution command, **Entrypoint must be** `/entrypoint.sh` (not `/app/navidock`). Verify:
 

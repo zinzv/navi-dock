@@ -27,17 +27,17 @@ func NewNavigationService(repo *repository.NavigationRepo) *NavigationService {
 	return &NavigationService{repo: repo}
 }
 
-func (s *NavigationService) ListNavigation() ([]model.NavGroup, error) {
-	return s.repo.ListGroupsWithItems()
+func (s *NavigationService) ListNavigation(userID string) ([]model.NavGroup, error) {
+	return s.repo.ListGroupsWithItems(userID)
 }
 
-func (s *NavigationService) ListGroups() ([]model.NavGroup, error) {
-	groups, err := s.repo.ListGroups()
+func (s *NavigationService) ListGroups(userID string) ([]model.NavGroup, error) {
+	groups, err := s.repo.ListGroups(userID)
 	if err != nil {
 		return nil, err
 	}
 	for i := range groups {
-		count, err := s.repo.CountItems(groups[i].ID)
+		count, err := s.repo.CountItems(userID, groups[i].ID)
 		if err != nil {
 			return nil, err
 		}
@@ -46,47 +46,47 @@ func (s *NavigationService) ListGroups() ([]model.NavGroup, error) {
 	return groups, nil
 }
 
-func (s *NavigationService) CreateGroup(in model.CreateGroupInput) (*model.NavGroup, error) {
+func (s *NavigationService) CreateGroup(userID string, in model.CreateGroupInput) (*model.NavGroup, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
 		return nil, ErrGroupNameEmpty
 	}
-	return s.repo.CreateGroup(name, strings.TrimSpace(in.Icon))
+	return s.repo.CreateGroup(userID, name, strings.TrimSpace(in.Icon))
 }
 
-func (s *NavigationService) UpdateGroup(id string, in model.UpdateGroupInput) (*model.NavGroup, error) {
+func (s *NavigationService) UpdateGroup(userID, id string, in model.UpdateGroupInput) (*model.NavGroup, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
 		return nil, ErrGroupNameEmpty
 	}
-	group, err := s.repo.UpdateGroup(id, name, strings.TrimSpace(in.Icon))
+	group, err := s.repo.UpdateGroup(userID, id, name, strings.TrimSpace(in.Icon))
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrGroupNotFound
 	}
 	return group, err
 }
 
-func (s *NavigationService) DeleteGroup(id string) error {
-	err := s.repo.DeleteGroup(id)
+func (s *NavigationService) DeleteGroup(userID, id string) error {
+	err := s.repo.DeleteGroup(userID, id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrGroupNotFound
 	}
 	return err
 }
 
-func (s *NavigationService) SortGroups(ids []string) error {
+func (s *NavigationService) SortGroups(userID string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	return s.repo.SortGroups(ids)
+	return s.repo.SortGroups(userID, ids)
 }
 
-func (s *NavigationService) SortItems(groupID string, ids []string) error {
+func (s *NavigationService) SortItems(userID, groupID string, ids []string) error {
 	groupID = strings.TrimSpace(groupID)
 	if groupID == "" {
 		return ErrGroupNotFound
 	}
-	ok, err := s.repo.GroupExists(groupID)
+	ok, err := s.repo.GroupExists(userID, groupID)
 	if err != nil {
 		return err
 	}
@@ -96,10 +96,10 @@ func (s *NavigationService) SortItems(groupID string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	return s.repo.SortItems(groupID, ids)
+	return s.repo.SortItems(userID, groupID, ids)
 }
 
-func (s *NavigationService) CreateItem(in model.UpsertItemInput) (*model.NavItem, error) {
+func (s *NavigationService) CreateItem(userID string, in model.UpsertItemInput) (*model.NavItem, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
 		return nil, ErrItemNameEmpty
@@ -113,7 +113,7 @@ func (s *NavigationService) CreateItem(in model.UpsertItemInput) (*model.NavItem
 	if groupID == "" {
 		return nil, ErrGroupNotFound
 	}
-	ok, err := s.repo.GroupExists(groupID)
+	ok, err := s.repo.GroupExists(userID, groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -135,6 +135,7 @@ func (s *NavigationService) CreateItem(in model.UpsertItemInput) (*model.NavItem
 	}
 
 	item := &model.NavItem{
+		UserID:      userID,
 		GroupID:     groupID,
 		Name:        name,
 		Description: strings.TrimSpace(in.Description),
@@ -151,8 +152,8 @@ func (s *NavigationService) CreateItem(in model.UpsertItemInput) (*model.NavItem
 	return item, nil
 }
 
-func (s *NavigationService) UpdateItem(id string, in model.UpsertItemInput) (*model.NavItem, error) {
-	item, err := s.repo.GetItem(id)
+func (s *NavigationService) UpdateItem(userID, id string, in model.UpsertItemInput) (*model.NavItem, error) {
+	item, err := s.repo.GetItem(userID, id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrItemNotFound
 	}
@@ -175,7 +176,7 @@ func (s *NavigationService) UpdateItem(id string, in model.UpsertItemInput) (*mo
 		groupID = item.GroupID
 	}
 	if groupID != item.GroupID {
-		ok, err := s.repo.GroupExists(groupID)
+		ok, err := s.repo.GroupExists(userID, groupID)
 		if err != nil {
 			return nil, err
 		}
@@ -212,16 +213,20 @@ func (s *NavigationService) UpdateItem(id string, in model.UpsertItemInput) (*mo
 	return item, nil
 }
 
-func (s *NavigationService) DeleteItem(id string) error {
-	err := s.repo.DeleteItem(id)
+func (s *NavigationService) DeleteItem(userID, id string) error {
+	err := s.repo.DeleteItem(userID, id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrItemNotFound
 	}
 	return err
 }
 
-func (s *NavigationService) ExportNavigation() (*model.NaviDockExport, error) {
-	groups, err := s.repo.ListGroupsWithItems()
+func (s *NavigationService) DeleteUserData(userID string) error {
+	return s.repo.DeleteByUser(userID)
+}
+
+func (s *NavigationService) ExportNavigation(userID string) (*model.NaviDockExport, error) {
+	groups, err := s.repo.ListGroupsWithItems(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +263,7 @@ func (s *NavigationService) ExportNavigation() (*model.NaviDockExport, error) {
 	return out, nil
 }
 
-func (s *NavigationService) ImportNaviDock(payload model.NaviDockExport) (groupCount, itemCount int, err error) {
+func (s *NavigationService) ImportNaviDock(userID string, payload model.NaviDockExport) (groupCount, itemCount int, err error) {
 	now := time.Now()
 	groups := make([]model.NavGroup, 0, len(payload.Groups))
 	items := make([]model.NavItem, 0)
@@ -274,6 +279,7 @@ func (s *NavigationService) ImportNaviDock(payload model.NaviDockExport) (groupC
 		}
 		groups = append(groups, model.NavGroup{
 			ID:        groupID,
+			UserID:    userID,
 			Name:      name,
 			Icon:      strings.TrimSpace(g.Icon),
 			Sort:      g.Sort,
@@ -309,6 +315,7 @@ func (s *NavigationService) ImportNaviDock(payload model.NaviDockExport) (groupC
 			}
 			items = append(items, model.NavItem{
 				ID:          itemID,
+				UserID:      userID,
 				GroupID:     groupID,
 				Name:        title,
 				Description: strings.TrimSpace(c.Description),
@@ -328,13 +335,13 @@ func (s *NavigationService) ImportNaviDock(payload model.NaviDockExport) (groupC
 	if len(groups) == 0 {
 		return 0, 0, errors.New("no groups in export")
 	}
-	if err := s.repo.ReplaceAll(groups, items); err != nil {
+	if err := s.repo.ReplaceAll(userID, groups, items); err != nil {
 		return 0, 0, err
 	}
 	return len(groups), len(items), nil
 }
 
-func (s *NavigationService) ImportSunPanel(payload model.SunPanelExport) (groupCount, itemCount int, err error) {
+func (s *NavigationService) ImportSunPanel(userID string, payload model.SunPanelExport) (groupCount, itemCount int, err error) {
 	groupsIn := append([]model.SunPanelGroup(nil), payload.Icons...)
 	sort.SliceStable(groupsIn, func(i, j int) bool {
 		if groupsIn[i].Sort == groupsIn[j].Sort {
@@ -355,6 +362,7 @@ func (s *NavigationService) ImportSunPanel(payload model.SunPanelExport) (groupC
 		groupID := repository.NewID()
 		groups = append(groups, model.NavGroup{
 			ID:        groupID,
+			UserID:    userID,
 			Name:      name,
 			Sort:      gi,
 			CreatedAt: now,
@@ -389,6 +397,7 @@ func (s *NavigationService) ImportSunPanel(payload model.SunPanelExport) (groupC
 			}
 			items = append(items, model.NavItem{
 				ID:          repository.NewID(),
+				UserID:      userID,
 				GroupID:     groupID,
 				Name:        title,
 				Description: strings.TrimSpace(c.Description),
@@ -405,7 +414,7 @@ func (s *NavigationService) ImportSunPanel(payload model.SunPanelExport) (groupC
 		}
 	}
 
-	if err := s.repo.ReplaceAll(groups, items); err != nil {
+	if err := s.repo.ReplaceAll(userID, groups, items); err != nil {
 		return 0, 0, err
 	}
 	return len(groups), len(items), nil

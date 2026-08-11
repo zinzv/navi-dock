@@ -15,9 +15,9 @@ func NewSettingsService(repo *repository.SettingsRepo) *SettingsService {
 	return &SettingsService{repo: repo}
 }
 
-func (s *SettingsService) Get() (model.AppSettings, error) {
+func (s *SettingsService) Get(userID string) (model.AppSettings, error) {
 	defaults := model.DefaultSettings()
-	values, err := s.repo.GetAll()
+	values, err := s.repo.GetAll(userID)
 	if err != nil {
 		return defaults, err
 	}
@@ -47,8 +47,8 @@ func (s *SettingsService) Get() (model.AppSettings, error) {
 	return defaults, nil
 }
 
-func (s *SettingsService) Update(in model.AppSettings) (model.AppSettings, error) {
-	current, err := s.Get()
+func (s *SettingsService) Update(userID string, in model.AppSettings) (model.AppSettings, error) {
+	current, err := s.Get(userID)
 	if err != nil {
 		return current, err
 	}
@@ -86,35 +86,47 @@ func (s *SettingsService) Update(in model.AppSettings) (model.AppSettings, error
 		"background_opacity": strconv.FormatFloat(current.BackgroundOpacity, 'f', 2, 64),
 	}
 	for k, v := range pairs {
-		if err := s.repo.Upsert(k, v); err != nil {
+		if err := s.repo.Upsert(userID, k, v); err != nil {
 			return current, err
 		}
 	}
 	return current, nil
 }
 
-func (s *SettingsService) SetBackgroundImage(path string) (model.AppSettings, error) {
-	current, err := s.Get()
+func (s *SettingsService) SetBackgroundImage(userID, path string) (model.AppSettings, error) {
+	current, err := s.Get(userID)
 	if err != nil {
 		return current, err
 	}
 	current.BackgroundImage = path
-	if err := s.repo.Upsert("background_image", path); err != nil {
+	if err := s.repo.Upsert(userID, "background_image", path); err != nil {
 		return current, err
 	}
 	return current, nil
 }
 
-func (s *SettingsService) SetSiteIcon(path string) (model.AppSettings, error) {
-	current, err := s.Get()
+func (s *SettingsService) SetSiteIcon(userID, path string) (model.AppSettings, error) {
+	current, err := s.Get(userID)
 	if err != nil {
 		return current, err
 	}
 	current.SiteIcon = path
-	if err := s.repo.Upsert("site_icon", path); err != nil {
+	if err := s.repo.Upsert(userID, "site_icon", path); err != nil {
 		return current, err
 	}
 	return current, nil
+}
+
+func (s *SettingsService) ListByKey(key string) ([]model.Setting, error) {
+	return s.repo.ListByKey(key)
+}
+
+func (s *SettingsService) UpsertRaw(userID, key, value string) error {
+	return s.repo.Upsert(userID, key, value)
+}
+
+func (s *SettingsService) DeleteUserData(userID string) error {
+	return s.repo.DeleteByUser(userID)
 }
 
 func clampOpacity(v float64) float64 {

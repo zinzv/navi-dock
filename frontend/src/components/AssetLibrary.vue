@@ -68,7 +68,7 @@ async function onFileChange(e: Event) {
 <template>
   <section class="card">
     <div class="card-header">
-      <p class="card-hint">{{ t('settings.libraryHint') }}</p>
+      <h2 class="card-title">{{ t('settings.library') }}</h2>
       <button type="button" class="primary-btn" :disabled="uploading" @click="triggerUpload">
         {{ uploading ? t('common.loading') : t('settings.libraryUpload') }}
       </button>
@@ -143,7 +143,7 @@ async function onFileChange(e: Event) {
 .card-title {
   margin: 0;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--sv-text);
 }
 

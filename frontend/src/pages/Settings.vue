@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '../stores/settings'
+import AccountSettings from '../components/AccountSettings.vue'
 import GroupManager from '../components/GroupManager.vue'
 import AssetLibrary from '../components/AssetLibrary.vue'
 import AssetGallery from '../components/AssetGallery.vue'
@@ -19,14 +20,16 @@ const iconInput = ref<HTMLInputElement | null>(null)
 const importInput = ref<HTMLInputElement | null>(null)
 const iconGalleryOpen = ref(false)
 const bgGalleryOpen = ref(false)
-const activeSection = ref('general')
+const activeSection = ref('account')
 
 const sideMenus = [
+  { id: 'account', labelKey: 'settings.account' },
   { id: 'general', labelKey: 'settings.general' },
-  { id: 'background', labelKey: 'settings.background' },
   { id: 'groups', labelKey: 'settings.groups' },
   { id: 'library', labelKey: 'settings.library' },
+  { id: 'background', labelKey: 'settings.background' },
   { id: 'backup', labelKey: 'settings.backup' },
+  { id: 'about', labelKey: 'settings.about' },
 ] as const
 
 function scrollToSection(id: string) {
@@ -213,7 +216,12 @@ async function onImportFile(e: Event) {
       </aside>
 
       <div class="settings-main">
+        <div id="settings-account" class="section-anchor">
+          <AccountSettings @saved="flashSaved" />
+        </div>
+
         <section id="settings-general" class="card">
+          <h2 class="card-title">{{ t('settings.general') }}</h2>
           <div class="rows">
         <div class="row">
           <span class="label">{{ t('settings.language') }}</span>
@@ -293,8 +301,16 @@ async function onImportFile(e: Event) {
       </div>
     </section>
 
+        <div id="settings-groups" class="section-anchor">
+          <GroupManager @saved="flashSaved" />
+        </div>
+
+        <div id="settings-library" class="section-anchor">
+          <AssetLibrary @saved="flashSaved" />
+        </div>
+
         <section id="settings-background" class="card">
-          <p class="card-hint">{{ t('settings.backgroundHint') }}</p>
+          <h2 class="card-title">{{ t('settings.background') }}</h2>
 
       <div class="bg-preview-wrap">
         <div class="bg-preview-base" />
@@ -360,16 +376,8 @@ async function onImportFile(e: Event) {
       </div>
     </section>
 
-        <div id="settings-groups" class="section-anchor">
-          <GroupManager @saved="flashSaved" />
-        </div>
-
-        <div id="settings-library" class="section-anchor">
-          <AssetLibrary @saved="flashSaved" />
-        </div>
-
         <section id="settings-backup" class="card">
-          <p class="card-hint">{{ t('settings.backupHint') }}</p>
+          <h2 class="card-title">{{ t('settings.backup') }}</h2>
       <div class="rows">
         <div class="row">
           <div class="bg-actions">
@@ -393,7 +401,8 @@ async function onImportFile(e: Event) {
       </div>
     </section>
 
-        <section class="card">
+        <section id="settings-about" class="card">
+          <h2 class="card-title">{{ t('settings.about') }}</h2>
           <div class="rows">
             <div class="row">
               <span class="label">{{ t('app.name') }}</span>
@@ -491,16 +500,18 @@ async function onImportFile(e: Event) {
   scroll-margin-top: 72px;
 }
 
+#settings-account,
 #settings-general,
 #settings-background,
 #settings-library,
-#settings-backup {
+#settings-backup,
+#settings-about {
   scroll-margin-top: 72px;
 }
 
 .settings h1 {
   font-size: 22px;
-  font-weight: 600;
+  font-weight: 700;
   margin: 0;
 }
 
@@ -520,7 +531,7 @@ async function onImportFile(e: Event) {
 .card-title {
   margin: 0 0 8px;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--sv-text);
 }
 

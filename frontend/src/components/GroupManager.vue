@@ -147,7 +147,7 @@ async function move(index: number, delta: number) {
 <template>
   <section class="card">
     <div class="card-header">
-      <p class="card-hint">{{ t('settings.groupsHint') }}</p>
+      <h2 class="card-title">{{ t('settings.groups') }}</h2>
       <button type="button" class="primary-btn" :disabled="busy || adding" @click="startAdd">
         {{ t('settings.groupsAdd') }}
       </button>
@@ -282,7 +282,7 @@ async function move(index: number, delta: number) {
 .card-title {
   margin: 0;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--sv-text);
 }
 

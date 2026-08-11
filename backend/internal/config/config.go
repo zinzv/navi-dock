@@ -10,18 +10,20 @@ const (
 )
 
 type Config struct {
-	Port    string
-	DataDir string
-	DBPath  string
-	WebDir  string
+	Port       string
+	DataDir    string
+	DBPath     string
+	WebDir     string
+	AuthSecret string
 }
 
 func Load() Config {
 	return Config{
-		Port:    env("SERVER_PORT", defaultPort),
-		DataDir: defaultDataDir,
-		DBPath:  defaultDBPath,
-		WebDir:  defaultWebDir,
+		Port:       env("SERVER_PORT", defaultPort),
+		DataDir:    defaultDataDir,
+		DBPath:     defaultDBPath,
+		WebDir:     defaultWebDir,
+		AuthSecret: env("AUTH_SECRET", ""),
 	}
 }
 

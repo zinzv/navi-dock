@@ -18,39 +18,46 @@ func NewNavigationRepo(db *gorm.DB) *NavigationRepo {
 	return &NavigationRepo{db: db}
 }
 
-func (r *NavigationRepo) ListGroupsWithItems() ([]model.NavGroup, error) {
+func (r *NavigationRepo) ListGroupsWithItems(userID string) ([]model.NavGroup, error) {
 	var groups []model.NavGroup
-	err := r.db.Preload("Items", func(db *gorm.DB) *gorm.DB {
-		return db.Order("sort ASC, created_at ASC")
-	}).Order("sort ASC, created_at ASC").Find(&groups).Error
+	err := r.db.Where("user_id = ?", userID).
+		Preload("Items", func(db *gorm.DB) *gorm.DB {
+			return db.Where("user_id = ?", userID).Order("sort ASC, created_at ASC")
+		}).
+		Order("sort ASC, created_at ASC").
+		Find(&groups).Error
 	return groups, err
 }
 
-func (r *NavigationRepo) ListGroups() ([]model.NavGroup, error) {
+func (r *NavigationRepo) ListGroups(userID string) ([]model.NavGroup, error) {
 	var groups []model.NavGroup
-	err := r.db.Order("sort ASC, created_at ASC").Find(&groups).Error
+	err := r.db.Where("user_id = ?", userID).Order("sort ASC, created_at ASC").Find(&groups).Error
 	return groups, err
 }
 
-func (r *NavigationRepo) GetGroup(id string) (*model.NavGroup, error) {
+func (r *NavigationRepo) GetGroup(userID, id string) (*model.NavGroup, error) {
 	var group model.NavGroup
-	err := r.db.Preload("Items", func(db *gorm.DB) *gorm.DB {
-		return db.Order("sort ASC, created_at ASC")
-	}).First(&group, "id = ?", id).Error
+	err := r.db.Where("user_id = ? AND id = ?", userID, id).
+		Preload("Items", func(db *gorm.DB) *gorm.DB {
+			return db.Where("user_id = ?", userID).Order("sort ASC, created_at ASC")
+		}).
+		First(&group).Error
 	if err != nil {
 		return nil, err
 	}
 	return &group, nil
 }
 
-func (r *NavigationRepo) CreateGroup(name, icon string) (*model.NavGroup, error) {
+func (r *NavigationRepo) CreateGroup(userID, name, icon string) (*model.NavGroup, error) {
 	var maxSort int
-	_ = r.db.Model(&model.NavGroup{}).Select("COALESCE(MAX(sort), -1)").Scan(&maxSort)
+	_ = r.db.Model(&model.NavGroup{}).Where("user_id = ?", userID).
+		Select("COALESCE(MAX(sort), -1)").Scan(&maxSort)
 	group := model.NavGroup{
-		ID:   newID(),
-		Name: name,
-		Icon: icon,
-		Sort: maxSort + 1,
+		ID:     newID(),
+		UserID: userID,
+		Name:   name,
+		Icon:   icon,
+		Sort:   maxSort + 1,
 	}
 	if err := r.db.Create(&group).Error; err != nil {
 		return nil, err
@@ -58,9 +65,9 @@ func (r *NavigationRepo) CreateGroup(name, icon string) (*model.NavGroup, error)
 	return &group, nil
 }
 
-func (r *NavigationRepo) UpdateGroup(id, name, icon string) (*model.NavGroup, error) {
+func (r *NavigationRepo) UpdateGroup(userID, id, name, icon string) (*model.NavGroup, error) {
 	var group model.NavGroup
-	if err := r.db.First(&group, "id = ?", id).Error; err != nil {
+	if err := r.db.Where("user_id = ? AND id = ?", userID, id).First(&group).Error; err != nil {
 		return nil, err
 	}
 	group.Name = name
@@ -71,12 +78,12 @@ func (r *NavigationRepo) UpdateGroup(id, name, icon string) (*model.NavGroup, er
 	return &group, nil
 }
 
-func (r *NavigationRepo) DeleteGroup(id string) error {
+func (r *NavigationRepo) DeleteGroup(userID, id string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("group_id = ?", id).Delete(&model.NavItem{}).Error; err != nil {
+		if err := tx.Where("user_id = ? AND group_id = ?", userID, id).Delete(&model.NavItem{}).Error; err != nil {
 			return err
 		}
-		res := tx.Delete(&model.NavGroup{}, "id = ?", id)
+		res := tx.Where("user_id = ? AND id = ?", userID, id).Delete(&model.NavGroup{})
 		if res.Error != nil {
 			return res.Error
 		}
@@ -87,10 +94,10 @@ func (r *NavigationRepo) DeleteGroup(id string) error {
 	})
 }
 
-func (r *NavigationRepo) SortGroups(ids []string) error {
+func (r *NavigationRepo) SortGroups(userID string, ids []string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		for i, id := range ids {
-			res := tx.Model(&model.NavGroup{}).Where("id = ?", id).Update("sort", i)
+			res := tx.Model(&model.NavGroup{}).Where("user_id = ? AND id = ?", userID, id).Update("sort", i)
 			if res.Error != nil {
 				return res.Error
 			}
@@ -102,15 +109,15 @@ func (r *NavigationRepo) SortGroups(ids []string) error {
 	})
 }
 
-func (r *NavigationRepo) CountItems(groupID string) (int64, error) {
+func (r *NavigationRepo) CountItems(userID, groupID string) (int64, error) {
 	var count int64
-	err := r.db.Model(&model.NavItem{}).Where("group_id = ?", groupID).Count(&count).Error
+	err := r.db.Model(&model.NavItem{}).Where("user_id = ? AND group_id = ?", userID, groupID).Count(&count).Error
 	return count, err
 }
 
-func (r *NavigationRepo) GetItem(id string) (*model.NavItem, error) {
+func (r *NavigationRepo) GetItem(userID, id string) (*model.NavItem, error) {
 	var item model.NavItem
-	if err := r.db.First(&item, "id = ?", id).Error; err != nil {
+	if err := r.db.Where("user_id = ? AND id = ?", userID, id).First(&item).Error; err != nil {
 		return nil, err
 	}
 	return &item, nil
@@ -119,7 +126,7 @@ func (r *NavigationRepo) GetItem(id string) (*model.NavItem, error) {
 func (r *NavigationRepo) CreateItem(item *model.NavItem) error {
 	var maxSort int
 	_ = r.db.Model(&model.NavItem{}).
-		Where("group_id = ?", item.GroupID).
+		Where("user_id = ? AND group_id = ?", item.UserID, item.GroupID).
 		Select("COALESCE(MAX(sort), -1)").
 		Scan(&maxSort)
 	item.Sort = maxSort + 1
@@ -136,8 +143,8 @@ func (r *NavigationRepo) UpdateItem(item *model.NavItem) error {
 	return r.db.Save(item).Error
 }
 
-func (r *NavigationRepo) DeleteItem(id string) error {
-	res := r.db.Delete(&model.NavItem{}, "id = ?", id)
+func (r *NavigationRepo) DeleteItem(userID, id string) error {
+	res := r.db.Where("user_id = ? AND id = ?", userID, id).Delete(&model.NavItem{})
 	if res.Error != nil {
 		return res.Error
 	}
@@ -147,11 +154,11 @@ func (r *NavigationRepo) DeleteItem(id string) error {
 	return nil
 }
 
-func (r *NavigationRepo) SortItems(groupID string, ids []string) error {
+func (r *NavigationRepo) SortItems(userID, groupID string, ids []string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		for i, id := range ids {
 			res := tx.Model(&model.NavItem{}).
-				Where("id = ? AND group_id = ?", id, groupID).
+				Where("user_id = ? AND id = ? AND group_id = ?", userID, id, groupID).
 				Update("sort", i)
 			if res.Error != nil {
 				return res.Error
@@ -164,19 +171,25 @@ func (r *NavigationRepo) SortItems(groupID string, ids []string) error {
 	})
 }
 
-func (r *NavigationRepo) GroupExists(id string) (bool, error) {
+func (r *NavigationRepo) GroupExists(userID, id string) (bool, error) {
 	var count int64
-	err := r.db.Model(&model.NavGroup{}).Where("id = ?", id).Count(&count).Error
+	err := r.db.Model(&model.NavGroup{}).Where("user_id = ? AND id = ?", userID, id).Count(&count).Error
 	return count > 0, err
 }
 
-func (r *NavigationRepo) ReplaceAll(groups []model.NavGroup, items []model.NavItem) error {
+func (r *NavigationRepo) ReplaceAll(userID string, groups []model.NavGroup, items []model.NavItem) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("1 = 1").Delete(&model.NavItem{}).Error; err != nil {
+		if err := tx.Where("user_id = ?", userID).Delete(&model.NavItem{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("1 = 1").Delete(&model.NavGroup{}).Error; err != nil {
+		if err := tx.Where("user_id = ?", userID).Delete(&model.NavGroup{}).Error; err != nil {
 			return err
+		}
+		for i := range groups {
+			groups[i].UserID = userID
+		}
+		for i := range items {
+			items[i].UserID = userID
 		}
 		if len(groups) > 0 {
 			if err := tx.Create(&groups).Error; err != nil {
@@ -189,6 +202,15 @@ func (r *NavigationRepo) ReplaceAll(groups []model.NavGroup, items []model.NavIt
 			}
 		}
 		return nil
+	})
+}
+
+func (r *NavigationRepo) DeleteByUser(userID string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ?", userID).Delete(&model.NavItem{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("user_id = ?", userID).Delete(&model.NavGroup{}).Error
 	})
 }
 

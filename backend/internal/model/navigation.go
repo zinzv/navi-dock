@@ -4,6 +4,7 @@ import "time"
 
 type NavGroup struct {
 	ID        string    `gorm:"primaryKey;size:36" json:"id"`
+	UserID    string    `gorm:"size:36;not null;default:'';index" json:"user_id"`
 	Name      string    `gorm:"size:64;not null" json:"name"`
 	Icon      string    `gorm:"size:128" json:"icon"`
 	Sort      int       `gorm:"not null;default:0;index" json:"sort"`
@@ -15,6 +16,7 @@ type NavGroup struct {
 
 type NavItem struct {
 	ID          string    `gorm:"primaryKey;size:36" json:"id"`
+	UserID      string    `gorm:"size:36;not null;default:'';index" json:"user_id"`
 	GroupID     string    `gorm:"size:36;not null;index" json:"group_id"`
 	Name        string    `gorm:"size:64;not null" json:"name"`
 	Description string    `gorm:"size:200" json:"description"`

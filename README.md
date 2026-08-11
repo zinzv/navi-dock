@@ -25,7 +25,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-**NAS / bind mount:** edit `.env` and set `PUID` / `PGID` to match the host data directory owner (`id <user>`).
+**NAS / bind mount:** `PUID` / `PGID` default to `1000`; override in `.env` if needed to match the host data directory owner (`id <user>`).
 
 Open: http://localhost:7530
 
