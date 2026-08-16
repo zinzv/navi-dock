@@ -13,6 +13,7 @@ import (
 	"github.com/navi-dock/navi-dock/internal/config"
 	"github.com/navi-dock/navi-dock/internal/repository"
 	"github.com/navi-dock/navi-dock/internal/service"
+	"github.com/navi-dock/navi-dock/internal/version"
 )
 
 func main() {
@@ -59,7 +60,7 @@ func main() {
 	mountStatic(r, cfg.WebDir)
 
 	addr := ":" + cfg.Port
-	log.Printf("naviDock listening on %s", addr)
+	log.Printf("naviDock %s listening on %s", version.Current(), addr)
 	if err := r.Run(addr); err != nil {
 		log.Fatal(err)
 	}

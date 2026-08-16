@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/navi-dock/navi-dock/internal/model"
 	"github.com/navi-dock/navi-dock/internal/service"
+	"github.com/navi-dock/navi-dock/internal/version"
 )
 
 type Handler struct {
@@ -71,7 +72,11 @@ func (h *Handler) Register(r *gin.Engine) {
 }
 
 func (h *Handler) Health(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "naviDock"})
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "ok",
+		"service": "naviDock",
+		"version": version.Current(),
+	})
 }
 
 func requireCurrentUser(c *gin.Context) *model.User {

@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        VERSION: ${APP_VERSION:-}
     image: navi-dock:latest
     container_name: navi-dock
     ports:
@@ -14,6 +16,7 @@ services:
     environment:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
+      APP_VERSION: ${APP_VERSION:-}
     volumes:
       - ./data:/data
     restart: unless-stopped

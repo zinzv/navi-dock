@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '../stores/settings'
 import AccountSettings from '../components/AccountSettings.vue'
@@ -8,8 +8,13 @@ import AssetLibrary from '../components/AssetLibrary.vue'
 import AssetGallery from '../components/AssetGallery.vue'
 import type { AppLocale } from '../i18n'
 import { exportNavigation, importNavigation } from '../api/settings'
+import { fetchAppVersion } from '../api/health'
 
-const VERSION = '0.1.0'
+const version = ref('…')
+
+onMounted(async () => {
+  version.value = await fetchAppVersion()
+})
 
 const { t } = useI18n()
 const settings = useSettingsStore()
@@ -410,7 +415,7 @@ async function onImportFile(e: Event) {
             </div>
             <div class="row">
               <span class="label">{{ t('settings.version') }}</span>
-              <span class="value mono">{{ VERSION }}</span>
+              <span class="value mono">{{ version }}</span>
             </div>
           </div>
         </section>

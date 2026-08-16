@@ -29,6 +29,23 @@ docker compose up -d --build
 
 Open: http://localhost:7530
 
+### Build with a version
+
+`APP_VERSION` is passed into the image as the Docker build arg `VERSION` (baked into the binary). If unset, the Dockerfile falls back to the `VERSION` file.
+
+PowerShell:
+
+```powershell
+$env:APP_VERSION = "v0.1.0"
+docker compose build
+```
+
+bash:
+
+```bash
+APP_VERSION=v0.1.0 docker compose build
+```
+
 ## Features (MVP)
 
 - Home dashboard with service icons
