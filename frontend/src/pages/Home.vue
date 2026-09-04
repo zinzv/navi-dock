@@ -265,6 +265,51 @@ function itemTileText(item: NavItem) {
   const n = item.name?.trim()
   return n || '?'
 }
+
+const opticallyLargeIconHints = [
+  'vercel',
+  'adguard',
+  'github',
+  'circle',
+  'disc',
+  'globe',
+  'earth',
+  'play',
+  'triangle',
+  'hexagon',
+  '音元',
+]
+
+const opticallySmallIconHints = ['plex', 'nas']
+
+const opticallyNarrowIconHints = [
+  'file',
+  'document',
+  'description',
+  'receipt',
+  'bookmark',
+  'paperclip',
+]
+
+function iconOpticalSize(item: NavItem) {
+  const identity = `${item.name || ''} ${item.icon || ''}`.toLowerCase()
+  if (opticallyLargeIconHints.some((hint) => identity.includes(hint))) return 27
+  if (opticallySmallIconHints.some((hint) => identity.includes(hint))) return 31
+  if (opticallyNarrowIconHints.some((hint) => identity.includes(hint))) return 30
+  return 29
+}
+
+function itemLabelClass(name: string) {
+  const visualLength = Array.from(name || '').reduce(
+    (length, char) => length + (/[\u2e80-\u9fff\uff00-\uffef]/.test(char) ? 2 : 1),
+    0,
+  )
+  return {
+    'is-compact': visualLength > 10,
+    'is-wrapped': visualLength > 16,
+  }
+}
+
 </script>
 
 <template>
@@ -329,9 +374,15 @@ function itemTileText(item: NavItem) {
               <div class="tile-text-main">{{ itemTileText(item) }}</div>
               <div v-if="item.description" class="tile-text-desc">{{ item.description }}</div>
             </div>
-            <Icon v-else :icon="item.icon || 'mdi:application-outline'" width="34" />
+            <Icon
+              v-else
+              class="tile-icon"
+              :icon="item.icon || 'mdi:application-outline'"
+              :width="iconOpticalSize(item)"
+              :height="iconOpticalSize(item)"
+            />
           </div>
-          <div class="app-label">{{ item.name }}</div>
+          <div class="app-label" :class="itemLabelClass(item.name)">{{ item.name }}</div>
         </button>
       </div>
     </section>

@@ -24,6 +24,7 @@ const editingId = ref<string | null>(null)
 const draftName = ref('')
 const adding = ref(false)
 const newName = ref('')
+const menuOpenId = ref<string | null>(null)
 
 async function load() {
   loading.value = true
@@ -43,6 +44,7 @@ onMounted(() => {
 })
 
 function startEdit(group: NavGroup) {
+  menuOpenId.value = null
   adding.value = false
   editingId.value = group.id
   draftName.value = group.name
@@ -102,6 +104,7 @@ async function confirmAdd() {
 }
 
 async function removeGroup(group: NavGroup) {
+  menuOpenId.value = null
   const count = group.item_count ?? group.items?.length ?? 0
   const msg =
     count > 0
@@ -120,6 +123,10 @@ async function removeGroup(group: NavGroup) {
   } finally {
     busy.value = false
   }
+}
+
+function toggleMenu(groupId: string) {
+  menuOpenId.value = menuOpenId.value === groupId ? null : groupId
 }
 
 async function move(index: number, delta: number) {
@@ -223,24 +230,28 @@ async function move(index: number, delta: number) {
             >
               <Icon icon="mdi:arrow-down" width="16" />
             </button>
-            <button
-              type="button"
-              class="icon-action"
-              :title="t('home.edit')"
-              :disabled="busy"
-              @click="startEdit(group)"
-            >
-              <Icon icon="mdi:pencil-outline" width="16" />
-            </button>
-            <button
-              type="button"
-              class="icon-action danger"
-              :title="t('home.delete')"
-              :disabled="busy"
-              @click="removeGroup(group)"
-            >
-              <Icon icon="mdi:trash-can-outline" width="16" />
-            </button>
+            <div class="group-menu">
+              <button
+                type="button"
+                class="icon-action"
+                :title="t('settings.groupsMore')"
+                :aria-expanded="menuOpenId === group.id"
+                :disabled="busy"
+                @click="toggleMenu(group.id)"
+              >
+                <Icon icon="mdi:dots-horizontal" width="18" />
+              </button>
+              <div v-if="menuOpenId === group.id" class="group-menu-popover">
+                <button type="button" @click="startEdit(group)">
+                  <Icon icon="mdi:pencil-outline" width="15" />
+                  {{ t('home.edit') }}
+                </button>
+                <button type="button" class="danger" @click="removeGroup(group)">
+                  <Icon icon="mdi:trash-can-outline" width="15" />
+                  {{ t('home.delete') }}
+                </button>
+              </div>
+            </div>
           </template>
         </div>
       </div>
@@ -256,9 +267,9 @@ async function move(index: number, delta: number) {
 .card {
   background: var(--sv-surface);
   border: 1px solid var(--sv-border);
-  border-radius: 10px;
-  padding: 16px 18px 4px;
-  margin-bottom: 16px;
+  border-radius: 12px;
+  padding: 22px 26px;
+  margin-bottom: 20px;
 }
 
 .card-header {
@@ -281,8 +292,8 @@ async function move(index: number, delta: number) {
 
 .card-title {
   margin: 0;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 600;
   color: var(--sv-text);
 }
 
@@ -313,8 +324,8 @@ async function move(index: number, delta: number) {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 44px;
-  padding: 10px 0;
+  min-height: 58px;
+  padding: 8px 0;
   font-size: 14px;
   border-top: 1px solid var(--sv-border);
 }
@@ -348,7 +359,7 @@ async function move(index: number, delta: number) {
 
 .meta {
   font-size: 12px;
-  color: var(--sv-mute);
+  color: #87909c;
   white-space: nowrap;
 }
 
@@ -386,16 +397,26 @@ async function move(index: number, delta: number) {
   color: #fff;
   border: none;
   border-radius: 8px;
-  padding: 6px 14px;
+  height: 36px;
+  padding: 0 14px;
   font-size: 13px;
   cursor: pointer;
 }
 
 .primary-btn:disabled,
-.link-btn:disabled,
-.icon-action:disabled {
+.link-btn:disabled {
   opacity: 0.45;
-  cursor: default;
+  cursor: not-allowed;
+}
+
+.primary-btn:hover:not(:disabled) {
+  background: var(--sv-accent-hover);
+}
+
+.icon-action:disabled {
+  opacity: 1;
+  color: var(--sv-disabled);
+  cursor: not-allowed;
 }
 
 .link-btn {
@@ -409,29 +430,79 @@ async function move(index: number, delta: number) {
 }
 
 .icon-action {
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   display: grid;
   place-items: center;
-  border: 1px solid var(--sv-border);
+  border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
-  color: var(--sv-text);
+  color: var(--sv-mute);
   cursor: pointer;
   padding: 0;
 }
 
 .icon-action:hover:not(:disabled) {
-  border-color: var(--sv-accent);
+  color: var(--sv-text);
+  background: var(--sv-surface-hover);
 }
 
 .icon-action.danger {
-  color: #dc2626;
+  color: var(--sv-mute);
 }
 
 .icon-action.danger:hover:not(:disabled) {
-  background: #fef2f2;
-  border-color: #fecaca;
+  color: var(--sv-danger);
+  background: var(--sv-danger-soft);
+}
+
+.group-menu {
+  position: relative;
+}
+
+.group-menu-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  min-width: 112px;
+  padding: 5px;
+  border: 1px solid var(--sv-border);
+  border-radius: 9px;
+  background: var(--sv-bg);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
+}
+
+.group-menu-popover button {
+  width: 100%;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sv-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.group-menu-popover button:hover {
+  background: var(--sv-surface-hover);
+}
+
+.group-menu-popover button.danger {
+  color: var(--sv-mute);
+}
+
+.group-menu-popover button.danger:hover {
+  color: var(--sv-danger);
+  background: var(--sv-danger-soft);
+}
+
+:global(html[data-theme='dark']) .meta {
+  color: rgba(255, 255, 255, 0.52);
 }
 
 @media (max-width: 640px) {

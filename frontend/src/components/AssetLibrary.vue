@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Icon } from '@iconify/vue'
 import {
   listAssets,
   uploadAsset,
@@ -104,7 +105,14 @@ async function onFileChange(e: Event) {
 
     <p v-if="loading" class="status">{{ t('common.loading') }}</p>
     <p v-else-if="error" class="status error">{{ error }}</p>
-    <p v-else-if="!items.length" class="status">{{ t('settings.libraryEmpty') }}</p>
+    <div v-else-if="!items.length" class="library-empty">
+      <Icon icon="mdi:image-multiple-outline" width="26" />
+      <strong>{{ t('settings.libraryEmptyTitle') }}</strong>
+      <span>{{ t('settings.libraryEmptyHint') }}</span>
+      <button type="button" class="empty-upload-btn" :disabled="uploading" @click="triggerUpload">
+        {{ t('settings.libraryUpload') }}
+      </button>
+    </div>
     <div v-else class="grid" :class="{ wallpapers: kind === 'wallpapers' }">
       <div v-for="item in items" :key="item.url" class="tile" :title="item.name">
         <img :src="item.url" :alt="item.name" />
@@ -117,9 +125,9 @@ async function onFileChange(e: Event) {
 .card {
   background: var(--sv-surface);
   border: 1px solid var(--sv-border);
-  border-radius: 10px;
-  padding: 16px 18px 16px;
-  margin-bottom: 16px;
+  border-radius: 12px;
+  padding: 22px 26px;
+  margin-bottom: 20px;
 }
 
 .card-header {
@@ -142,8 +150,8 @@ async function onFileChange(e: Event) {
 
 .card-title {
   margin: 0;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 600;
   color: var(--sv-text);
 }
 
@@ -159,14 +167,15 @@ async function onFileChange(e: Event) {
   color: #fff;
   border: none;
   border-radius: 8px;
-  padding: 6px 14px;
+  height: 36px;
+  padding: 0 14px;
   font-size: 13px;
   cursor: pointer;
   transition: opacity 0.18s ease-out;
 }
 
 .primary-btn:hover:not(:disabled) {
-  opacity: 0.9;
+  background: var(--sv-accent-hover);
 }
 
 .primary-btn:disabled {
@@ -201,8 +210,8 @@ async function onFileChange(e: Event) {
 }
 
 .tabs button.active {
-  background: var(--sv-accent);
-  color: #fff;
+  background: color-mix(in srgb, var(--sv-accent) 12%, transparent);
+  color: var(--sv-accent);
 }
 
 .status {
@@ -213,6 +222,44 @@ async function onFileChange(e: Event) {
 
 .status.error {
   color: #ef4444;
+}
+
+.library-empty {
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--sv-mute);
+  text-align: center;
+}
+
+.library-empty strong {
+  color: var(--sv-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.library-empty span {
+  font-size: 12px;
+}
+
+.empty-upload-btn {
+  margin-top: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--sv-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sv-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.empty-upload-btn:hover:not(:disabled) {
+  color: var(--sv-accent);
+  background: color-mix(in srgb, var(--sv-accent) 8%, transparent);
 }
 
 .grid {

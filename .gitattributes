@@ -1,0 +1,4 @@
+# Shell scripts must stay LF. CRLF makes Alpine fail with:
+# exec /entrypoint.sh: no such file or directory
+*.sh text eol=lf
+docker/entrypoint.sh text eol=lf

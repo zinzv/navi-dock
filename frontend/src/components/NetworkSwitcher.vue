@@ -31,6 +31,7 @@ async function cycleNetwork() {
 <template>
   <button
     class="icon-btn"
+    :class="{ active: settings.networkMode !== 'auto' }"
     type="button"
     :title="`${t('network.title')}: ${meta.label}`"
     :aria-label="`${t('network.title')}: ${meta.label}`"

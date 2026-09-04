@@ -30,6 +30,7 @@ async function cycleTheme() {
 <template>
   <button
     class="icon-btn"
+    :class="{ active: settings.theme !== 'system' }"
     type="button"
     :title="`${t('theme.title')}: ${meta.label}`"
     :aria-label="`${t('theme.title')}: ${meta.label}`"

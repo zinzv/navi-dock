@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Icon } from '@iconify/vue'
 import { useSettingsStore } from '../stores/settings'
 import AccountSettings from '../components/AccountSettings.vue'
 import GroupManager from '../components/GroupManager.vue'
@@ -278,10 +279,11 @@ async function onImportFile(e: Event) {
             <div class="action-btns">
               <button
                 type="button"
-                class="primary-btn"
+                class="secondary-btn"
                 :disabled="settings.saving"
                 @click="iconGalleryOpen = true"
               >
+                <Icon icon="mdi:image-multiple-outline" width="15" />
                 {{ t('settings.siteIconGallery') }}
               </button>
               <button
@@ -290,11 +292,12 @@ async function onImportFile(e: Event) {
                 :disabled="settings.saving"
                 @click="iconInput?.click()"
               >
+                <Icon icon="mdi:upload" width="15" />
                 {{ t('settings.siteIconUpload') }}
               </button>
               <button
                 type="button"
-                class="primary-btn"
+                class="danger-ghost-btn"
                 :disabled="settings.saving || !settings.siteIcon"
                 @click="onRemoveIcon"
               >
@@ -317,10 +320,16 @@ async function onImportFile(e: Event) {
         <section id="settings-background" class="card">
           <h2 class="card-title">{{ t('settings.background') }}</h2>
 
-      <div class="bg-preview-wrap">
+      <div v-if="previewStyle" class="bg-preview-wrap">
         <div class="bg-preview-base" />
-        <div v-if="previewStyle" class="bg-preview-image" :style="previewStyle" />
-        <div v-else class="bg-preview-empty">{{ t('settings.backgroundEmpty') }}</div>
+        <div class="bg-preview-image" :style="previewStyle" />
+        <div class="mini-home">
+          <div class="mini-home-head">
+            <span class="mini-home-brand"><i />{{ settings.siteTitle || t('app.name') }}</span>
+            <span class="mini-home-search" />
+          </div>
+          <div class="mini-home-cards"><i /><i /><i /></div>
+        </div>
       </div>
 
       <div class="rows">
@@ -337,10 +346,11 @@ async function onImportFile(e: Event) {
             <div class="action-btns">
               <button
                 type="button"
-                class="primary-btn"
+                class="secondary-btn"
                 :disabled="settings.saving"
                 @click="bgGalleryOpen = true"
               >
+                <Icon icon="mdi:image-multiple-outline" width="15" />
                 {{ t('settings.backgroundGallery') }}
               </button>
               <button
@@ -349,11 +359,12 @@ async function onImportFile(e: Event) {
                 :disabled="settings.saving"
                 @click="fileInput?.click()"
               >
+                <Icon icon="mdi:upload" width="15" />
                 {{ t('settings.backgroundUpload') }}
               </button>
               <button
                 type="button"
-                class="primary-btn"
+                class="danger-ghost-btn"
                 :disabled="settings.saving || !settings.backgroundImage"
                 @click="onRemoveBackground"
               >
@@ -363,20 +374,21 @@ async function onImportFile(e: Event) {
           </div>
         </div>
 
-        <div class="row row-stack">
-          <div class="row-inline">
-            <span class="label">{{ t('settings.backgroundOpacity') }}</span>
+        <div class="row">
+          <span class="label">{{ t('settings.backgroundOpacity') }}</span>
+          <div class="range-control">
+            <input
+              v-model.number="opacityPercent"
+              class="opacity-range"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              :style="{ '--range-progress': `${opacityPercent}%` }"
+              @input="onOpacityInput"
+            />
             <span class="value mono">{{ opacityPercent }}%</span>
           </div>
-          <input
-            v-model.number="opacityPercent"
-            class="opacity-range"
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            @input="onOpacityInput"
-          />
         </div>
       </div>
     </section>
@@ -384,11 +396,23 @@ async function onImportFile(e: Event) {
         <section id="settings-backup" class="card">
           <h2 class="card-title">{{ t('settings.backup') }}</h2>
       <div class="rows">
-        <div class="row">
-          <div class="bg-actions">
-            <button type="button" class="primary-btn" :disabled="ioBusy" @click="onExport">
+        <div class="row migration-row">
+          <div class="setting-copy">
+            <span class="label">{{ t('settings.export') }}</span>
+            <span class="hint">{{ t('settings.exportHint') }}</span>
+          </div>
+          <div>
+            <button type="button" class="secondary-btn" :disabled="ioBusy" @click="onExport">
               {{ t('settings.exportAction') }}
             </button>
+          </div>
+        </div>
+        <div class="row migration-row">
+          <div class="setting-copy">
+            <span class="label">{{ t('settings.import') }}</span>
+            <span class="hint">{{ t('settings.importHint') }}</span>
+          </div>
+          <div>
             <input
               ref="importInput"
               class="hidden-file"
@@ -396,7 +420,7 @@ async function onImportFile(e: Event) {
               accept="application/json,.json"
               @change="onImportFile"
             />
-            <button type="button" class="primary-btn" :disabled="ioBusy" @click="triggerImport">
+            <button type="button" class="secondary-btn restore-btn" :disabled="ioBusy" @click="triggerImport">
               {{ t('settings.importAction') }}
             </button>
           </div>
@@ -410,12 +434,14 @@ async function onImportFile(e: Event) {
           <h2 class="card-title">{{ t('settings.about') }}</h2>
           <div class="rows">
             <div class="row">
-              <span class="label">{{ t('app.name') }}</span>
-              <span class="value">{{ t('app.tagline') }}</span>
+              <div class="setting-copy">
+                <span class="about-product">{{ t('app.name') }}</span>
+                <span class="hint">{{ t('app.tagline') }}</span>
+              </div>
             </div>
             <div class="row">
               <span class="label">{{ t('settings.version') }}</span>
-              <span class="value mono">{{ version }}</span>
+              <span class="value mono about-version">v{{ version }}</span>
             </div>
           </div>
         </section>
@@ -439,8 +465,8 @@ async function onImportFile(e: Event) {
 
 <style scoped>
 .settings {
-  padding: 28px 32px 48px;
-  max-width: 860px;
+  padding: 24px 32px 72px;
+  max-width: 1180px;
   margin: 0 auto;
 }
 
@@ -448,38 +474,38 @@ async function onImportFile(e: Event) {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 24px;
+  margin-bottom: 30px;
 }
 
 .settings-body {
-  display: flex;
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
   align-items: flex-start;
-  gap: 20px;
+  gap: 28px;
 }
 
 .settings-side {
   position: sticky;
-  top: 72px;
-  flex: 0 0 128px;
-  width: 128px;
+  top: 88px;
+  width: 168px;
 }
 
 .side-nav {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 6px;
-  border: 1px solid var(--sv-border);
-  border-radius: 10px;
-  background: var(--sv-surface);
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .side-nav-item {
   border: 0;
   background: transparent;
-  color: var(--sv-mute);
+  color: rgba(20, 30, 45, 0.62);
   text-align: left;
-  padding: 8px 12px;
+  min-height: 40px;
+  padding: 8px 14px;
   border-radius: 8px;
   font-size: 13px;
   cursor: pointer;
@@ -492,8 +518,8 @@ async function onImportFile(e: Event) {
 }
 
 .side-nav-item.active {
-  color: #fff;
-  background: var(--sv-accent);
+  color: #5d63e8;
+  background: rgba(99, 102, 241, 0.09);
 }
 
 .settings-main {
@@ -502,7 +528,7 @@ async function onImportFile(e: Event) {
 }
 
 .section-anchor {
-  scroll-margin-top: 72px;
+  scroll-margin-top: 96px;
 }
 
 #settings-account,
@@ -511,12 +537,12 @@ async function onImportFile(e: Event) {
 #settings-library,
 #settings-backup,
 #settings-about {
-  scroll-margin-top: 72px;
+  scroll-margin-top: 96px;
 }
 
 .settings h1 {
-  font-size: 22px;
-  font-weight: 700;
+  font-size: 28px;
+  font-weight: 600;
   margin: 0;
 }
 
@@ -528,15 +554,16 @@ async function onImportFile(e: Event) {
 .card {
   background: var(--sv-surface);
   border: 1px solid var(--sv-border);
-  border-radius: 10px;
-  padding: 16px 18px 4px;
-  margin-bottom: 16px;
+  border-radius: 12px;
+  padding: 22px 26px;
+  margin-bottom: 20px;
+  box-shadow: none;
 }
 
 .card-title {
-  margin: 0 0 8px;
-  font-size: 15px;
-  font-weight: 700;
+  margin: 0 0 10px;
+  font-size: 18px;
+  font-weight: 600;
   color: var(--sv-text);
 }
 
@@ -553,14 +580,14 @@ async function onImportFile(e: Event) {
 }
 
 .row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
-  min-height: 44px;
-  padding: 10px 0;
+  min-height: 58px;
+  padding: 8px 0;
   font-size: 14px;
-  border-top: 1px solid var(--sv-border);
+  border-top: 1px solid color-mix(in srgb, var(--sv-border) 60%, transparent);
 }
 
 .rows .row:first-child {
@@ -583,7 +610,9 @@ async function onImportFile(e: Event) {
 
 .label {
   flex-shrink: 0;
-  color: var(--sv-text);
+  color: var(--sv-regular);
+  font-size: 15px;
+  font-weight: 500;
 }
 
 .hint {
@@ -628,8 +657,8 @@ async function onImportFile(e: Event) {
 }
 
 .segmented button.active {
-  background: var(--sv-accent);
-  color: #fff;
+  background: rgba(99, 102, 241, 0.12);
+  color: #5b5fef;
 }
 
 .primary-btn {
@@ -637,14 +666,18 @@ async function onImportFile(e: Event) {
   color: #fff;
   border: none;
   border-radius: 8px;
-  padding: 6px 14px;
+  height: 36px;
+  padding: 0 14px;
   font-size: 13px;
   cursor: pointer;
   transition: opacity 0.18s ease-out;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .primary-btn:hover:not(:disabled) {
-  opacity: 0.9;
+  background: var(--sv-accent-hover);
 }
 
 .primary-btn:disabled,
@@ -668,12 +701,50 @@ async function onImportFile(e: Event) {
   background: var(--sv-border);
 }
 
-.row-input {
+.secondary-btn,
+.danger-ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--sv-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sv-text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.secondary-btn:hover:not(:disabled) {
+  background: var(--sv-surface-hover);
+  border-color: color-mix(in srgb, var(--sv-accent) 30%, var(--sv-border));
+}
+
+.danger-ghost-btn {
+  border-color: transparent;
+  color: var(--sv-mute);
+}
+
+.danger-ghost-btn:hover:not(:disabled),
+.danger-ghost-btn:hover:not(:disabled) {
+  color: var(--sv-danger);
+  border-color: transparent;
+  background: var(--sv-danger-soft);
+}
+
+.secondary-btn:disabled,
+.danger-ghost-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.row-input {
+  height: 40px;
   width: 100%;
   border-radius: 8px;
   border: 1px solid var(--sv-border);
-  background: var(--sv-bg);
+  background: var(--sv-input-bg);
   color: var(--sv-text);
   padding: 0 12px;
   outline: none;
@@ -681,7 +752,7 @@ async function onImportFile(e: Event) {
 }
 
 .site-title-input {
-  width: 180px;
+  width: 300px;
   max-width: 100%;
   box-sizing: border-box;
 }
@@ -707,13 +778,18 @@ async function onImportFile(e: Event) {
 }
 
 .row-input:focus {
-  border-color: var(--sv-accent);
+  border-color: color-mix(in srgb, var(--sv-accent) 50%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sv-accent) 8%, transparent);
+}
+
+.row-input::placeholder {
+  color: color-mix(in srgb, var(--sv-text) 43%, transparent);
 }
 
 .bg-preview-wrap {
   position: relative;
-  height: 120px;
-  margin: 4px 0 8px;
+  height: 112px;
+  margin: 4px 0 18px;
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--sv-border);
@@ -723,6 +799,7 @@ async function onImportFile(e: Event) {
   position: absolute;
   inset: 0;
   background: linear-gradient(180deg, #16324a 0%, #1f4a3d 100%);
+  filter: saturate(0.82);
 }
 
 .bg-preview-image {
@@ -733,13 +810,54 @@ async function onImportFile(e: Event) {
   background-repeat: no-repeat;
 }
 
-.bg-preview-empty {
+.mini-home {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
-  color: rgba(255, 255, 255, 0.75);
-  font-size: 13px;
+  z-index: 2;
+  padding: 14px 18px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.mini-home-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mini-home-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 8px;
+}
+
+.mini-home-brand i {
+  width: 7px;
+  height: 7px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+}
+
+.mini-home-search {
+  width: 38%;
+  height: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(5, 20, 28, 0.18);
+}
+
+.mini-home-cards {
+  display: flex;
+  gap: 9px;
+  margin-top: 22px;
+}
+
+.mini-home-cards i {
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  background: rgba(5, 20, 28, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .bg-actions {
@@ -756,6 +874,124 @@ async function onImportFile(e: Event) {
 .opacity-range {
   width: 100%;
   accent-color: var(--sv-accent);
+  height: 16px;
+  margin: 0;
+}
+
+.range-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 12px;
+  width: min(480px, 100%);
+  justify-self: end;
+}
+
+.range-control .value {
+  text-align: right;
+}
+
+.opacity-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--sv-accent) 0 var(--range-progress),
+    rgba(20, 30, 40, 0.12) var(--range-progress) 100%
+  );
+}
+
+.opacity-range::-webkit-slider-thumb {
+  width: 15px;
+  height: 15px;
+  margin-top: -5.5px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--sv-accent);
+  -webkit-appearance: none;
+}
+
+.setting-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.migration-row > :last-child {
+  justify-self: end;
+}
+
+.about-product {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.about-version {
+  font-size: 14px;
+}
+
+.row > :last-child:not(:only-child),
+.segmented,
+.bg-actions {
+  justify-self: end;
+}
+
+.row > .setting-copy:only-child {
+  grid-column: 1 / -1;
+}
+
+.settings-main :deep(.card) {
+  background: var(--sv-surface);
+  border: 1px solid var(--sv-border);
+  border-radius: 12px;
+  margin-bottom: 20px;
+  box-shadow: none;
+}
+
+.settings-main :deep(.card-title) {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.settings-main :deep(.row) {
+  min-height: 58px;
+  border-color: color-mix(in srgb, var(--sv-border) 60%, transparent);
+}
+
+.settings-main :deep(.rows) {
+  max-width: 900px;
+}
+
+:global(html[data-theme='dark']) .side-nav-item.active {
+  color: #8e92ff;
+  background: var(--sv-accent-weak);
+}
+
+:global(html[data-theme='dark']) .side-nav-item {
+  color: var(--sv-mute);
+}
+
+:global(html[data-theme='dark']) .row-input {
+  background: var(--sv-input-bg);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+:global(html[data-theme='dark']) .segmented button.active {
+  color: #8c91ff;
+  background: rgba(95, 102, 232, 0.15);
+}
+
+:global(html[data-theme='dark']) .segmented button:not(.active) {
+  color: var(--sv-mute);
+}
+
+:global(html[data-theme='dark']) .opacity-range::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--sv-accent) 0 var(--range-progress),
+    rgba(255, 255, 255, 0.14) var(--range-progress) 100%
+  );
 }
 
 .io-status {
@@ -776,7 +1012,7 @@ async function onImportFile(e: Event) {
   }
 
   .settings-body {
-    flex-direction: column;
+    grid-template-columns: 1fr;
     gap: 12px;
   }
 
@@ -797,7 +1033,7 @@ async function onImportFile(e: Event) {
   }
 
   .row:not(.row-stack) {
-    flex-wrap: wrap;
+    grid-template-columns: 1fr;
     gap: 8px;
   }
 

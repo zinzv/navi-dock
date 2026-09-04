@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-
 FROM node:22-alpine AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
@@ -30,7 +28,7 @@ COPY --from=backend-builder /out/navidock /app/navidock
 COPY --from=backend-builder /out/VERSION /app/VERSION
 COPY --from=backend-builder /src/web /app/web
 COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 ENV SERVER_PORT=7530
 # Prefer explicit APP_VERSION; else baked file from build.
 ENV APP_VERSION=${VERSION}

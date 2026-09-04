@@ -241,16 +241,15 @@ function roleLabel(role: string) {
       <div class="rows">
         <div class="row current-row">
           <div class="current-line">
-            <span class="label">{{ t('settings.accountCurrent') }}</span>
             <span class="value">{{ auth.user?.username }}</span>
             <span class="role-tag">{{ roleLabel(auth.user?.role || '') }}</span>
           </div>
           <div class="toolbar-actions">
-            <button type="button" class="ghost-btn" :disabled="busy" @click="onLogout">
-              {{ t('settings.accountLogout') }}
-            </button>
-            <button type="button" class="primary-btn" :disabled="busy || anyModalOpen" @click="openReset">
+            <button type="button" class="secondary-btn" :disabled="busy || anyModalOpen" @click="openReset">
               {{ t('settings.accountResetPassword') }}
+            </button>
+            <button type="button" class="logout-btn" :disabled="busy" @click="onLogout">
+              {{ t('settings.accountLogout') }}
             </button>
           </div>
         </div>
@@ -458,9 +457,9 @@ function roleLabel(role: string) {
 .card {
   background: var(--sv-surface);
   border: 1px solid var(--sv-border);
-  border-radius: 10px;
-  padding: 16px 18px 4px;
-  margin-bottom: 16px;
+  border-radius: 12px;
+  padding: 20px 24px 16px;
+  margin-bottom: 20px;
 }
 
 .card-header {
@@ -477,8 +476,8 @@ function roleLabel(role: string) {
 
 .card-title {
   margin: 0;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 600;
   color: var(--sv-text);
 }
 
@@ -515,8 +514,8 @@ function roleLabel(role: string) {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 44px;
-  padding: 10px 0;
+  min-height: 58px;
+  padding: 8px 0;
   font-size: 14px;
   border-top: 1px solid var(--sv-border);
 }
@@ -531,7 +530,10 @@ function roleLabel(role: string) {
 }
 
 .row.current-row {
-  gap: 12px;
+  gap: 18px;
+  min-height: 52px;
+  padding: 8px 0 0;
+  max-width: 820px;
 }
 
 .current-line {
@@ -603,7 +605,7 @@ function roleLabel(role: string) {
   border: 0;
   background: var(--sv-accent);
   color: #fff;
-  height: 32px;
+  height: 36px;
   padding: 0 14px;
   border-radius: 8px;
   font-size: 13px;
@@ -612,6 +614,42 @@ function roleLabel(role: string) {
 
 .primary-btn:disabled {
   opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.primary-btn:hover:not(:disabled) {
+  background: var(--sv-accent-hover);
+}
+
+.secondary-btn,
+.logout-btn {
+  border: 1px solid var(--sv-border);
+  background: transparent;
+  color: var(--sv-text);
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.secondary-btn:hover:not(:disabled) {
+  background: var(--sv-surface-hover);
+}
+
+.logout-btn {
+  border-color: transparent;
+  color: var(--sv-mute);
+}
+
+.logout-btn:hover:not(:disabled) {
+  color: var(--sv-danger);
+  background: var(--sv-danger-soft);
+}
+
+.secondary-btn:disabled,
+.logout-btn:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
@@ -643,8 +681,8 @@ function roleLabel(role: string) {
   font-size: 11px;
   padding: 2px 7px;
   border-radius: 999px;
-  color: var(--sv-mute);
-  background: color-mix(in srgb, var(--sv-accent) 12%, transparent);
+  color: color-mix(in srgb, var(--sv-accent) 78%, var(--sv-text));
+  background: color-mix(in srgb, var(--sv-accent) 10%, transparent);
 }
 
 .account-modal-root .role-tag {

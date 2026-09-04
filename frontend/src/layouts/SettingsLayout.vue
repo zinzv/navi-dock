@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import { Icon } from '@iconify/vue'
 import ThemeSwitcher from '../components/ThemeSwitcher.vue'
 import { useSettingsStore } from '../stores/settings'
 
+const { t } = useI18n()
 const settings = useSettingsStore()
 </script>
 
@@ -16,11 +19,11 @@ const settings = useSettingsStore()
           :src="settings.siteIcon"
           alt=""
         />
-        <span v-else class="settings-brand-mark">🏠</span>
+        <Icon v-else class="settings-brand-mark" icon="mdi:home-outline" width="18" aria-hidden="true" />
         <span>{{ settings.siteTitle || t('app.name') }}</span>
       </RouterLink>
 
-      <div class="settings-nav-actions">
+      <div class="settings-nav-actions settings-control-capsule">
         <ThemeSwitcher />
       </div>
     </header>
