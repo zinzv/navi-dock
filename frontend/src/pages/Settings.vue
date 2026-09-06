@@ -5,7 +5,6 @@ import { Icon } from '@iconify/vue'
 import { useSettingsStore } from '../stores/settings'
 import AccountSettings from '../components/AccountSettings.vue'
 import GroupManager from '../components/GroupManager.vue'
-import AssetLibrary from '../components/AssetLibrary.vue'
 import AssetGallery from '../components/AssetGallery.vue'
 import type { AppLocale } from '../i18n'
 import { exportNavigation, importNavigation } from '../api/settings'
@@ -32,7 +31,6 @@ const sideMenus = [
   { id: 'account', labelKey: 'settings.account' },
   { id: 'general', labelKey: 'settings.general' },
   { id: 'groups', labelKey: 'settings.groups' },
-  { id: 'library', labelKey: 'settings.library' },
   { id: 'background', labelKey: 'settings.background' },
   { id: 'backup', labelKey: 'settings.backup' },
   { id: 'about', labelKey: 'settings.about' },
@@ -313,10 +311,6 @@ async function onImportFile(e: Event) {
           <GroupManager @saved="flashSaved" />
         </div>
 
-        <div id="settings-library" class="section-anchor">
-          <AssetLibrary @saved="flashSaved" />
-        </div>
-
         <section id="settings-background" class="card">
           <h2 class="card-title">{{ t('settings.background') }}</h2>
 
@@ -534,7 +528,6 @@ async function onImportFile(e: Event) {
 #settings-account,
 #settings-general,
 #settings-background,
-#settings-library,
 #settings-backup,
 #settings-about {
   scroll-margin-top: 96px;
@@ -752,7 +745,7 @@ async function onImportFile(e: Event) {
 }
 
 .site-title-input {
-  width: 300px;
+  width: 220px;
   max-width: 100%;
   box-sizing: border-box;
 }

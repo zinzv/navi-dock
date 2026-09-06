@@ -41,6 +41,7 @@ const createUsername = ref('')
 const createPassword = ref('')
 const createConfirm = ref('')
 const createRole = ref<'admin' | 'user'>('user')
+const menuOpenId = ref<string | null>(null)
 
 const LIST_PAGE_SIZE = 5
 const listPage = ref(1)
@@ -49,6 +50,26 @@ const pagedUsers = computed(() => {
   const start = (listPage.value - 1) * LIST_PAGE_SIZE
   return users.value.slice(start, start + LIST_PAGE_SIZE)
 })
+
+const createPasswordHint = computed(() => {
+  if (!createPassword.value) return ''
+  if (createPassword.value.length < 6) return t('settings.accountPasswordHint')
+  return ''
+})
+
+const createConfirmHint = computed(() => {
+  if (!createConfirm.value) return ''
+  if (createPassword.value !== createConfirm.value) return t('settings.accountPasswordMismatch')
+  return ''
+})
+
+const canCreate = computed(
+  () =>
+    createUsername.value.trim().length >= 2 &&
+    createPassword.value.length >= 6 &&
+    createPassword.value === createConfirm.value &&
+    !busy.value,
+)
 
 function clampListPage() {
   if (listPage.value > listPageCount.value) {
@@ -164,10 +185,15 @@ function closeCreate() {
   if (busy.value) return
   createOpen.value = false
   createError.value = ''
+  menuOpenId.value = null
+}
+
+function toggleMenu(id: string) {
+  menuOpenId.value = menuOpenId.value === id ? null : id
 }
 
 async function onCreate() {
-  if (busy.value || !isAdmin.value) return
+  if (busy.value || !isAdmin.value || !canCreate.value) return
   const username = createUsername.value.trim()
   const password = createPassword.value
   if (!username || !password) return
@@ -195,7 +221,12 @@ async function onCreate() {
 }
 
 async function onDelete(user: UserPublic) {
+  menuOpenId.value = null
   if (busy.value || !isAdmin.value) return
+  if (auth.user?.id === user.id) {
+    error.value = t('settings.accountCannotDeleteSelf')
+    return
+  }
   if (!window.confirm(t('settings.accountDeleteConfirm', { name: user.username }))) return
   busy.value = true
   error.value = ''
@@ -330,11 +361,15 @@ function roleLabel(role: string) {
         aria-modal="true"
         :data-theme="settings.resolvedTheme"
         :aria-label="t('settings.accountCreate')"
+        @click="menuOpenId = null"
       >
         <div class="account-backdrop" @click="closeCreate" />
-        <div class="account-modal account-modal-wide">
+        <div class="account-modal account-modal-wide" @click.stop>
           <div class="account-head">
-            <h2>{{ t('settings.accountCreate') }}</h2>
+            <div class="account-head-copy">
+              <h2>{{ t('settings.accountCreate') }}</h2>
+              <p>{{ t('settings.accountCreateHint') }}</p>
+            </div>
             <button type="button" class="account-close" :disabled="busy" @click="closeCreate">
               <Icon icon="mdi:close" width="18" />
             </button>
@@ -343,20 +378,43 @@ function roleLabel(role: string) {
             <div class="list-block">
               <p class="list-title">{{ t('settings.accountList') }}</p>
               <div class="user-list">
-                <div v-for="user in pagedUsers" :key="user.id" class="user-item">
+                <div
+                  v-for="user in pagedUsers"
+                  :key="user.id"
+                  class="user-item"
+                  :class="{ current: auth.user?.id === user.id }"
+                >
                   <div class="user-meta">
                     <span class="value">{{ user.username }}</span>
                     <span class="role-tag">{{ roleLabel(user.role) }}</span>
                   </div>
-                  <button
-                    type="button"
-                    class="icon-action danger"
-                    :title="t('home.delete')"
-                    :disabled="busy"
-                    @click="onDelete(user)"
-                  >
-                    <Icon icon="mdi:trash-can-outline" width="16" />
-                  </button>
+                  <div class="user-menu" @click.stop>
+                    <button
+                      type="button"
+                      class="icon-action"
+                      :title="t('settings.accountMore')"
+                      :disabled="busy"
+                      @click="toggleMenu(user.id)"
+                    >
+                      <Icon icon="mdi:dots-horizontal" width="18" />
+                    </button>
+                    <div v-if="menuOpenId === user.id" class="user-menu-popover">
+                      <button
+                        type="button"
+                        class="danger"
+                        :disabled="auth.user?.id === user.id"
+                        :title="
+                          auth.user?.id === user.id
+                            ? t('settings.accountCannotDeleteSelf')
+                            : t('home.delete')
+                        "
+                        @click="onDelete(user)"
+                      >
+                        <Icon icon="mdi:trash-can-outline" width="15" />
+                        {{ t('home.delete') }}
+                      </button>
+                    </div>
+                  </div>
                 </div>
                 <div v-if="!users.length" class="user-item empty">
                   <span class="value mute">{{ t('settings.accountEmpty') }}</span>
@@ -386,7 +444,10 @@ function roleLabel(role: string) {
             </div>
 
             <div class="form-block">
-              <p class="form-title">{{ t('settings.accountCreate') }}</p>
+              <div class="form-head">
+                <p class="form-title">{{ t('settings.accountInfo') }}</p>
+                <p class="form-hint">{{ t('settings.accountInfoHint') }}</p>
+              </div>
               <label class="field">
                 <span class="field-label">{{ t('settings.accountUsername') }}</span>
                 <input
@@ -417,9 +478,12 @@ function roleLabel(role: string) {
                   v-model="createPassword"
                   input-class="field-input"
                   autocomplete="new-password"
-                  :placeholder="t('settings.accountPasswordPlaceholder')"
+                  :placeholder="t('settings.accountPasswordInputPlaceholder')"
                   :disabled="busy"
                 />
+                <span class="field-hint" :class="{ error: createPasswordHint }">
+                  {{ createPasswordHint || t('settings.accountPasswordHint') }}
+                </span>
               </label>
               <label class="field">
                 <span class="field-label">{{ t('settings.accountConfirmPassword') }}</span>
@@ -427,9 +491,17 @@ function roleLabel(role: string) {
                   v-model="createConfirm"
                   input-class="field-input"
                   autocomplete="new-password"
+                  :placeholder="t('settings.accountConfirmPlaceholder')"
                   :disabled="busy"
                   @keyup.enter="onCreate"
                 />
+                <span v-if="createConfirmHint" class="field-hint error">{{ createConfirmHint }}</span>
+                <span
+                  v-else-if="createConfirm && createPassword === createConfirm"
+                  class="field-hint ok"
+                >
+                  {{ t('settings.accountPasswordMatch') }}
+                </span>
               </label>
               <p v-if="createError" class="modal-error">{{ createError }}</p>
             </div>
@@ -441,7 +513,7 @@ function roleLabel(role: string) {
             <button
               type="button"
               class="primary-btn"
-              :disabled="busy || !createUsername.trim() || !createPassword"
+              :disabled="!canCreate"
               @click="onCreate"
             >
               {{ t('settings.accountCreate') }}
@@ -728,15 +800,18 @@ function roleLabel(role: string) {
 }
 
 .account-modal-root {
-  --modal-accent: #6366f1;
+  --modal-accent: #5f66e8;
   --modal-bg: #ffffff;
-  --modal-text: #1f2937;
-  --modal-mute: #6b7280;
-  --modal-border: #cbd5e1;
+  --modal-text: #182033;
+  --modal-mute: #737b8c;
+  --modal-border: rgba(15, 23, 42, 0.08);
   --modal-input-bg: #f8fafc;
-  --modal-list-bg: #f1f5f9;
+  --modal-list-bg: transparent;
+  --modal-hover: rgba(15, 23, 42, 0.04);
   --modal-backdrop: rgba(15, 23, 42, 0.48);
   --modal-shadow: 0 24px 64px rgba(15, 23, 42, 0.22);
+  --modal-disabled-bg: #e7e8ec;
+  --modal-disabled-text: #a2a7b2;
 
   position: fixed;
   inset: 0;
@@ -748,14 +823,17 @@ function roleLabel(role: string) {
 }
 
 .account-modal-root[data-theme='dark'] {
-  --modal-bg: #171b24;
-  --modal-text: #f3f4f6;
-  --modal-mute: #9ca3af;
-  --modal-border: rgba(255, 255, 255, 0.16);
-  --modal-input-bg: #0f172a;
-  --modal-list-bg: #111827;
+  --modal-bg: #202124;
+  --modal-text: rgba(255, 255, 255, 0.92);
+  --modal-mute: rgba(255, 255, 255, 0.55);
+  --modal-border: rgba(255, 255, 255, 0.08);
+  --modal-input-bg: rgba(0, 0, 0, 0.22);
+  --modal-list-bg: transparent;
+  --modal-hover: rgba(255, 255, 255, 0.05);
   --modal-backdrop: rgba(2, 6, 23, 0.62);
   --modal-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  --modal-disabled-bg: rgba(255, 255, 255, 0.08);
+  --modal-disabled-text: rgba(255, 255, 255, 0.35);
 }
 
 .account-backdrop {
@@ -769,7 +847,7 @@ function roleLabel(role: string) {
   width: min(420px, 100%);
   max-height: min(90vh, 720px);
   overflow: auto;
-  border-radius: 12px;
+  border-radius: 14px;
   border: 1px solid var(--modal-border);
   background: var(--modal-bg);
   color: var(--modal-text);
@@ -777,41 +855,56 @@ function roleLabel(role: string) {
 }
 
 .account-modal-wide {
-  width: min(640px, 100%);
+  width: min(780px, 100%);
+  min-height: 500px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .account-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px;
+  min-height: 76px;
+  padding: 18px 20px 16px;
   border-bottom: 1px solid var(--modal-border);
+  flex-shrink: 0;
 }
 
+.account-head-copy h2,
 .account-head h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 600;
+  line-height: 24px;
   color: var(--modal-text);
+}
+
+.account-head-copy p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--modal-mute);
 }
 
 .account-close {
   border: 0;
   background: transparent;
   color: var(--modal-mute);
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .account-close:hover:not(:disabled) {
   color: var(--modal-text);
-  background: color-mix(in srgb, var(--modal-accent) 12%, transparent);
+  background: var(--modal-hover);
 }
 
 .account-body {
@@ -823,22 +916,32 @@ function roleLabel(role: string) {
 
 .create-body {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(240px, 1.1fr);
-  gap: 20px;
-  align-items: start;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 0;
+  align-items: stretch;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
 }
 
 .list-block,
 .form-block {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   min-width: 0;
+  min-height: 0;
+}
+
+.list-block {
+  padding: 20px;
+  border-right: 1px solid var(--modal-border);
 }
 
 .form-block {
-  padding-left: 20px;
-  border-left: 1px solid var(--modal-border);
+  padding: 20px 24px;
+  border-left: 0;
+  gap: 16px;
 }
 
 .list-title,
@@ -847,15 +950,33 @@ function roleLabel(role: string) {
   font-size: 13px;
   font-weight: 600;
   color: var(--modal-text);
+  line-height: 20px;
+}
+
+.form-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+
+.form-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--modal-mute);
 }
 
 .user-list {
   width: 100%;
-  max-height: 280px;
+  flex: 1;
+  max-height: none;
   overflow: auto;
-  border: 1px solid var(--modal-border);
-  border-radius: 10px;
-  background: var(--modal-list-bg);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .user-item {
@@ -863,17 +984,76 @@ function roleLabel(role: string) {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 40px;
-  padding: 6px 10px;
-  border-top: 1px solid var(--modal-border);
+  min-height: 50px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--modal-hover);
 }
 
 .user-item:first-child {
   border-top: 0;
 }
 
+.user-item.current {
+  background: color-mix(in srgb, var(--modal-accent) 6%, transparent);
+  border-color: color-mix(in srgb, var(--modal-accent) 18%, transparent);
+}
+
 .user-item.empty {
   justify-content: flex-start;
+  background: transparent;
+}
+
+.user-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.user-menu-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 120px;
+  padding: 4px;
+  border: 1px solid var(--modal-border);
+  border-radius: 8px;
+  background: var(--modal-bg);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+}
+
+.user-menu-popover button {
+  width: 100%;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--modal-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.user-menu-popover button:hover:not(:disabled) {
+  background: var(--modal-hover);
+}
+
+.user-menu-popover button.danger {
+  color: var(--modal-mute);
+}
+
+.user-menu-popover button.danger:hover:not(:disabled) {
+  color: #ef6a6a;
+  background: rgba(239, 106, 106, 0.08);
+}
+
+.user-menu-popover button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .list-pager {
@@ -910,8 +1090,12 @@ function roleLabel(role: string) {
 }
 
 .user-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   justify-content: flex-start;
   min-width: 0;
+  flex-wrap: wrap;
 }
 
 .user-meta .value {
@@ -924,46 +1108,39 @@ function roleLabel(role: string) {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
+  gap: 7px;
   width: 100%;
+  max-width: 320px;
 }
 
 .field-label {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--modal-text);
 }
 
-.role-select {
-  width: 140px;
-  max-width: 100%;
-  height: 36px;
-  padding: 0 8px;
-  border: 1.5px solid var(--modal-border);
-  border-radius: 8px;
-  background: var(--modal-input-bg);
-  color: var(--modal-text);
-  font-size: 13px;
-  outline: none;
+.field-hint {
+  font-size: 12px;
+  color: var(--modal-mute);
+  line-height: 1.4;
 }
 
-.role-select:focus {
-  border-color: var(--modal-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--modal-accent) 22%, transparent);
+.field-hint.error {
+  color: #ef6a6a;
 }
 
-.role-select:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+.field-hint.ok {
+  color: #22a06b;
 }
 
+.role-select,
 .field-input,
 :deep(.field-input) {
   width: 100%;
-  max-width: 240px;
-  height: 36px;
-  padding: 0 12px;
-  border: 1.5px solid var(--modal-border);
+  max-width: 100%;
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--modal-border);
   border-radius: 8px;
   background: var(--modal-input-bg);
   color: var(--modal-text);
@@ -972,21 +1149,35 @@ function roleLabel(role: string) {
   box-sizing: border-box;
 }
 
-.field :deep(.password-wrap) {
-  width: 100%;
-  max-width: 240px;
+.role-select:focus,
+.field-input:focus,
+:deep(.field-input:focus) {
+  border-color: color-mix(in srgb, var(--modal-accent) 50%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--modal-accent) 10%, transparent);
 }
 
-@media (max-width: 640px) {
+.role-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.field :deep(.password-wrap) {
+  width: 100%;
+  max-width: 100%;
+}
+
+@media (max-width: 720px) {
   .create-body {
     grid-template-columns: 1fr;
   }
 
+  .list-block {
+    border-right: 0;
+    border-bottom: 1px solid var(--modal-border);
+  }
+
   .form-block {
-    padding-left: 0;
-    border-left: 0;
-    padding-top: 12px;
-    border-top: 1px solid var(--modal-border);
+    padding-top: 16px;
   }
 }
 
@@ -999,12 +1190,6 @@ function roleLabel(role: string) {
   color: var(--modal-mute);
 }
 
-.field-input:focus,
-:deep(.field-input:focus) {
-  border-color: var(--modal-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--modal-accent) 22%, transparent);
-}
-
 :deep(.toggle) {
   color: var(--modal-mute);
 }
@@ -1012,7 +1197,7 @@ function roleLabel(role: string) {
 .modal-error {
   margin: 0;
   font-size: 13px;
-  color: #ef4444;
+  color: #ef6a6a;
 }
 
 .account-foot {
@@ -1020,16 +1205,49 @@ function roleLabel(role: string) {
   justify-content: flex-end;
   align-items: center;
   gap: 10px;
-  padding: 12px 16px 16px;
+  height: 64px;
+  padding: 0 20px;
   border-top: 1px solid var(--modal-border);
+  flex-shrink: 0;
 }
 
 .account-modal-root .primary-btn {
   background: var(--modal-accent);
+  height: 38px;
+  padding: 0 18px;
+}
+
+.account-modal-root .primary-btn:disabled {
+  background: var(--modal-disabled-bg);
+  color: var(--modal-disabled-text);
+  opacity: 1;
 }
 
 .account-modal-root .ghost-btn {
   border-color: var(--modal-border);
   color: var(--modal-text);
+  height: 38px;
+  padding: 0 14px;
+}
+
+.account-modal-root .icon-action {
+  width: 32px;
+  height: 32px;
+  color: var(--modal-mute);
+}
+
+.account-modal-root .icon-action:hover:not(:disabled) {
+  color: var(--modal-text);
+  background: var(--modal-hover);
+}
+
+.account-modal-root .role-tag {
+  height: 22px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--modal-accent) 80%, var(--modal-text));
+  background: color-mix(in srgb, var(--modal-accent) 8%, transparent);
 }
 </style>

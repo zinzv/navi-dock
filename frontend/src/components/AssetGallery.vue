@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
 import {
@@ -27,11 +27,31 @@ const items = ref<AssetItem[]>([])
 const loading = ref(false)
 const uploading = ref(false)
 const error = ref('')
+const selectedUrl = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
+
+const hasItems = computed(() => items.value.length > 0)
+const canUse = computed(() => Boolean(selectedUrl.value))
+
+const emptyTitle = computed(() =>
+  kind.value === 'wallpapers' ? t('edit.galleryEmptyWallpaperTitle') : t('edit.galleryEmptyIconTitle'),
+)
+const emptyHint = computed(() =>
+  kind.value === 'wallpapers' ? t('edit.galleryEmptyWallpaperHint') : t('edit.galleryEmptyIconHint'),
+)
+const uploadLabel = computed(() =>
+  kind.value === 'wallpapers' ? t('edit.galleryUploadWallpaper') : t('edit.galleryUploadIcon'),
+)
+const countLabel = computed(() =>
+  kind.value === 'wallpapers'
+    ? t('edit.galleryWallpaperCount', { count: items.value.length })
+    : t('edit.galleryIconCount', { count: items.value.length }),
+)
 
 async function load() {
   loading.value = true
   error.value = ''
+  selectedUrl.value = ''
   try {
     const res = await listAssets(kind.value)
     items.value = res.items || []
@@ -48,6 +68,7 @@ watch(
   ([open, initial]) => {
     if (!open) return
     kind.value = initial || 'icons'
+    selectedUrl.value = ''
     void load()
   },
 )
@@ -60,8 +81,17 @@ onMounted(() => {
   if (props.open) void load()
 })
 
-function onPick(url: string) {
-  emit('select', url)
+function onSelect(url: string) {
+  selectedUrl.value = url
+}
+
+function onUse() {
+  if (!selectedUrl.value) return
+  emit('select', selectedUrl.value)
+  emit('close')
+}
+
+function onCancel() {
   emit('close')
 }
 
@@ -79,7 +109,7 @@ async function onFileChange(e: Event) {
   try {
     const res = await uploadAsset(kind.value, file)
     await load()
-    onPick(res.url)
+    selectedUrl.value = res.url
   } catch (err) {
     error.value = err instanceof Error ? err.message : t('edit.uploadFailed')
   } finally {
@@ -94,28 +124,48 @@ async function onFileChange(e: Event) {
       v-if="open"
       class="gallery-root"
       :data-theme="settings.resolvedTheme"
-      @keydown.esc.prevent="emit('close')"
+      @keydown.esc.prevent="onCancel"
     >
-      <div class="gallery-backdrop" @click="emit('close')" />
+      <div class="gallery-backdrop" @click="onCancel" />
       <div class="gallery-panel" role="dialog" aria-modal="true" :aria-label="t('edit.gallery')">
         <header class="gallery-head">
-          <h3>{{ t('edit.gallery') }}</h3>
-          <button type="button" class="icon-close" :aria-label="t('edit.close')" @click="emit('close')">
+          <div class="gallery-head-copy">
+            <h3>{{ t('edit.gallery') }}</h3>
+            <p>{{ t('edit.galleryHint') }}</p>
+          </div>
+          <button type="button" class="icon-close" :aria-label="t('edit.close')" @click="onCancel">
             <Icon icon="mdi:close" width="18" />
           </button>
         </header>
 
-        <div class="gallery-tabs">
-          <button type="button" :class="{ active: kind === 'icons' }" @click="kind = 'icons'">
-            {{ t('edit.galleryIcons') }}
-          </button>
-          <button type="button" :class="{ active: kind === 'wallpapers' }" @click="kind = 'wallpapers'">
-            {{ t('edit.galleryWallpapers') }}
-          </button>
-        </div>
-
         <div class="gallery-toolbar">
-          <button type="button" class="upload-btn" :disabled="uploading" @click="triggerUpload">
+          <div class="gallery-tabs" role="tablist" :aria-label="t('edit.gallery')">
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="kind === 'icons'"
+              :class="{ active: kind === 'icons' }"
+              @click="kind = 'icons'"
+            >
+              {{ t('edit.galleryIcons') }}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="kind === 'wallpapers'"
+              :class="{ active: kind === 'wallpapers' }"
+              @click="kind = 'wallpapers'"
+            >
+              {{ t('edit.galleryWallpapers') }}
+            </button>
+          </div>
+          <button
+            v-if="hasItems"
+            type="button"
+            class="upload-btn"
+            :disabled="uploading"
+            @click="triggerUpload"
+          >
             <Icon icon="mdi:upload" width="16" />
             {{ uploading ? t('common.loading') : t('edit.localUpload') }}
           </button>
@@ -128,22 +178,59 @@ async function onFileChange(e: Event) {
           />
         </div>
 
-        <p v-if="error" class="gallery-error">{{ error }}</p>
-        <p v-else-if="loading" class="gallery-hint">{{ t('common.loading') }}</p>
-        <p v-else-if="!items.length" class="gallery-hint">{{ t('edit.galleryEmpty') }}</p>
+        <div class="gallery-body">
+          <p v-if="error" class="gallery-error">{{ error }}</p>
+          <p v-else-if="loading" class="gallery-hint">{{ t('common.loading') }}</p>
 
-        <div v-else class="gallery-grid">
-          <button
-            v-for="item in items"
-            :key="item.url"
-            type="button"
-            class="gallery-item"
-            :title="item.name"
-            @click="onPick(item.url)"
+          <div v-else-if="!hasItems" class="gallery-empty">
+            <div class="empty-icon">
+              <Icon
+                :icon="kind === 'wallpapers' ? 'mdi:image-outline' : 'mdi:image-multiple-outline'"
+                width="22"
+              />
+            </div>
+            <strong>{{ emptyTitle }}</strong>
+            <span>{{ emptyHint }}</span>
+            <button type="button" class="empty-upload-btn" :disabled="uploading" @click="triggerUpload">
+              <Icon icon="mdi:upload" width="16" />
+              {{ uploading ? t('common.loading') : uploadLabel }}
+            </button>
+          </div>
+
+          <div
+            v-else
+            class="gallery-grid"
+            :class="{ wallpapers: kind === 'wallpapers', icons: kind === 'icons' }"
           >
-            <img :src="item.url" :alt="item.name" />
-          </button>
+            <button
+              v-for="item in items"
+              :key="item.url"
+              type="button"
+              class="gallery-item"
+              :class="{ selected: selectedUrl === item.url }"
+              :title="item.name"
+              @click="onSelect(item.url)"
+              @dblclick="selectedUrl = item.url; onUse()"
+            >
+              <img :src="item.url" :alt="item.name" />
+              <span v-if="selectedUrl === item.url" class="check">
+                <Icon icon="mdi:check" width="12" />
+              </span>
+            </button>
+          </div>
         </div>
+
+        <footer v-if="hasItems" class="gallery-foot">
+          <span class="count">{{ countLabel }}</span>
+          <div class="foot-actions">
+            <button type="button" class="ghost-btn" @click="onCancel">
+              {{ t('settings.groupsCancel') }}
+            </button>
+            <button type="button" class="primary-btn" :disabled="!canUse" @click="onUse">
+              {{ t('edit.galleryUse') }}
+            </button>
+          </div>
+        </footer>
       </div>
     </div>
   </Teleport>
@@ -161,23 +248,27 @@ async function onFileChange(e: Event) {
 
 .gallery-root[data-theme='light'] {
   --g-bg: #ffffff;
-  --g-text: #1f2937;
-  --g-mute: #6b7280;
+  --g-text: #182033;
+  --g-mute: #737b8c;
   --g-border: #e5e7eb;
-  --g-surface: #f8fafc;
-  --g-hover: #f3f4f6;
-  --g-accent: #6366f1;
+  --g-divider: #eef0f3;
+  --g-surface: #f6f7f9;
+  --g-hover: #f6f7f9;
+  --g-accent: #5f66e8;
+  --g-accent-soft: rgba(95, 102, 232, 0.08);
   --g-backdrop: rgba(15, 23, 42, 0.45);
 }
 
 .gallery-root[data-theme='dark'] {
-  --g-bg: #171b24;
-  --g-text: #f3f4f6;
-  --g-mute: #9ca3af;
-  --g-border: rgba(255, 255, 255, 0.1);
-  --g-surface: #111827;
+  --g-bg: #202124;
+  --g-text: rgba(255, 255, 255, 0.9);
+  --g-mute: rgba(255, 255, 255, 0.55);
+  --g-border: rgba(255, 255, 255, 0.08);
+  --g-divider: rgba(255, 255, 255, 0.06);
+  --g-surface: #26272b;
   --g-hover: rgba(255, 255, 255, 0.06);
-  --g-accent: #818cf8;
+  --g-accent: #6970ef;
+  --g-accent-soft: rgba(105, 112, 239, 0.14);
   --g-backdrop: rgba(2, 6, 23, 0.62);
 }
 
@@ -189,8 +280,9 @@ async function onFileChange(e: Event) {
 
 .gallery-panel {
   position: relative;
-  width: min(520px, 100%);
-  max-height: min(80vh, 640px);
+  width: min(680px, 100%);
+  min-height: 440px;
+  max-height: 70vh;
   display: flex;
   flex-direction: column;
   background: var(--g-bg);
@@ -203,17 +295,25 @@ async function onFileChange(e: Event) {
 
 .gallery-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--g-border);
+  gap: 16px;
+  padding: 20px 22px 16px;
+  border-bottom: 1px solid var(--g-divider);
   flex-shrink: 0;
 }
 
-.gallery-head h3 {
+.gallery-head-copy h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
+  line-height: 24px;
+}
+
+.gallery-head-copy p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--g-mute);
 }
 
 .icon-close {
@@ -226,6 +326,7 @@ async function onFileChange(e: Event) {
   display: grid;
   place-items: center;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .icon-close:hover {
@@ -233,55 +334,74 @@ async function onFileChange(e: Event) {
   color: var(--g-text);
 }
 
-.gallery-tabs {
+.gallery-toolbar {
   display: flex;
-  gap: 0;
-  margin: 12px 16px 0;
-  border: 1px solid var(--g-border);
-  border-radius: 8px;
-  overflow: hidden;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 22px 0;
   flex-shrink: 0;
+}
+
+.gallery-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 24px;
+  height: 36px;
 }
 
 .gallery-tabs button {
-  flex: 1;
+  position: relative;
   border: 0;
   background: transparent;
   color: var(--g-mute);
-  padding: 8px 12px;
-  font-size: 13px;
+  padding: 0 0 10px;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
 }
 
-.gallery-tabs button + button {
-  border-left: 1px solid var(--g-border);
-}
-
 .gallery-tabs button.active {
+  color: var(--g-accent);
+  font-weight: 600;
+}
+
+.gallery-tabs button.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  border-radius: 999px;
   background: var(--g-accent);
-  color: #fff;
 }
 
-.gallery-toolbar {
-  padding: 12px 16px;
-  flex-shrink: 0;
-}
-
-.upload-btn {
+.upload-btn,
+.empty-upload-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   height: 34px;
   padding: 0 12px;
   border-radius: 8px;
-  border: 1px solid var(--g-accent);
+  border: 1px solid var(--g-border);
   background: transparent;
-  color: var(--g-accent);
+  color: var(--g-text);
   font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
 }
 
-.upload-btn:disabled {
+.upload-btn:hover:not(:disabled),
+.empty-upload-btn:hover:not(:disabled) {
+  background: var(--g-accent-soft);
+  border-color: color-mix(in srgb, var(--g-accent) 30%, var(--g-border));
+  color: var(--g-accent);
+}
+
+.upload-btn:disabled,
+.empty-upload-btn:disabled {
   opacity: 0.55;
   cursor: default;
 }
@@ -290,9 +410,17 @@ async function onFileChange(e: Event) {
   display: none;
 }
 
+.gallery-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 22px 20px;
+}
+
 .gallery-hint,
 .gallery-error {
-  margin: 0 16px 8px;
+  margin: 0;
   font-size: 13px;
   color: var(--g-mute);
 }
@@ -301,28 +429,90 @@ async function onFileChange(e: Event) {
   color: #ef4444;
 }
 
+.gallery-empty {
+  flex: 1;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.empty-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--g-accent-soft);
+  color: color-mix(in srgb, var(--g-accent) 70%, var(--g-text));
+  margin-bottom: 6px;
+}
+
+.gallery-empty strong {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--g-text);
+}
+
+.gallery-empty span {
+  font-size: 13px;
+  color: var(--g-mute);
+}
+
+.empty-upload-btn {
+  margin-top: 10px;
+}
+
 .gallery-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
-  gap: 10px;
-  padding: 0 16px 16px;
+  gap: 12px;
   overflow: auto;
   min-height: 0;
+  flex: 1;
+  align-content: start;
   scrollbar-width: thin;
 }
 
+.gallery-grid.icons {
+  grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
+}
+
+.gallery-grid.wallpapers {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .gallery-item {
-  aspect-ratio: 1;
-  border: 1px solid var(--g-border);
-  border-radius: 10px;
+  position: relative;
+  border: 1px solid transparent;
+  border-radius: 8px;
   padding: 0;
   background: var(--g-surface);
   overflow: hidden;
   cursor: pointer;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    border-color 140ms ease;
+}
+
+.gallery-grid.icons .gallery-item {
+  aspect-ratio: 1;
+}
+
+.gallery-grid.wallpapers .gallery-item {
+  aspect-ratio: 16 / 10;
 }
 
 .gallery-item:hover {
-  border-color: var(--g-accent);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+}
+
+.gallery-item.selected {
+  border: 2px solid var(--g-accent);
 }
 
 .gallery-item img {
@@ -330,5 +520,91 @@ async function onFileChange(e: Event) {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.gallery-grid.icons .gallery-item img {
+  object-fit: contain;
+  padding: 14px;
+  box-sizing: border-box;
+}
+
+.check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--g-accent);
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+
+.gallery-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 64px;
+  padding: 12px 22px;
+  border-top: 1px solid var(--g-divider);
+  flex-shrink: 0;
+}
+
+.count {
+  font-size: 13px;
+  color: var(--g-mute);
+}
+
+.foot-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ghost-btn,
+.primary-btn {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ghost-btn {
+  border: 1px solid var(--g-border);
+  background: transparent;
+  color: var(--g-text);
+}
+
+.ghost-btn:hover {
+  background: var(--g-hover);
+}
+
+.primary-btn {
+  border: 0;
+  background: var(--g-accent);
+  color: #fff;
+}
+
+.primary-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.primary-btn:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+@media (max-width: 720px) {
+  .gallery-grid.wallpapers {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .gallery-toolbar {
+    flex-wrap: wrap;
+  }
 }
 </style>
