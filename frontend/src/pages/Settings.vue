@@ -317,13 +317,6 @@ async function onImportFile(e: Event) {
       <div v-if="previewStyle" class="bg-preview-wrap">
         <div class="bg-preview-base" />
         <div class="bg-preview-image" :style="previewStyle" />
-        <div class="mini-home">
-          <div class="mini-home-head">
-            <span class="mini-home-brand"><i />{{ settings.siteTitle || t('app.name') }}</span>
-            <span class="mini-home-search" />
-          </div>
-          <div class="mini-home-cards"><i /><i /><i /></div>
-        </div>
       </div>
 
       <div class="rows">
@@ -801,56 +794,6 @@ async function onImportFile(e: Event) {
   background-position: center;
   background-size: cover;
   background-repeat: no-repeat;
-}
-
-.mini-home {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  padding: 14px 18px;
-  color: rgba(255, 255, 255, 0.78);
-}
-
-.mini-home-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.mini-home-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 8px;
-}
-
-.mini-home-brand i {
-  width: 7px;
-  height: 7px;
-  border: 1px solid currentColor;
-  border-radius: 2px;
-}
-
-.mini-home-search {
-  width: 38%;
-  height: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 999px;
-  background: rgba(5, 20, 28, 0.18);
-}
-
-.mini-home-cards {
-  display: flex;
-  gap: 9px;
-  margin-top: 22px;
-}
-
-.mini-home-cards i {
-  width: 24px;
-  height: 24px;
-  border-radius: 5px;
-  background: rgba(5, 20, 28, 0.34);
-  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .bg-actions {
