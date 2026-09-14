@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, onMounted, ref, type Ref } from 'vue'
+import { computed, inject, onMounted, onUnmounted, ref, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
 import {
@@ -13,6 +13,11 @@ import {
 import { useSettingsStore } from '../stores/settings'
 import AppContextMenu from '../components/AppContextMenu.vue'
 import EditItemModal from '../components/EditItemModal.vue'
+import sortHandIcon from '../assets/sort-hand.png'
+
+const sortIconStyle = {
+  '--sort-icon': `url("${sortHandIcon}")`,
+}
 
 const { t } = useI18n()
 const settings = useSettingsStore()
@@ -33,6 +38,8 @@ const createGroupId = ref('')
 const sortingGroupId = ref('')
 const dragItemId = ref('')
 const sortBusy = ref(false)
+let ignoreOutsideUntil = 0
+let suppressClick = false
 
 const filteredGroups = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
@@ -65,7 +72,14 @@ function matchItem(item: NavItem, q: string) {
 }
 
 onMounted(async () => {
+  window.addEventListener('pointerdown', onOutsidePointerDown, true)
+  window.addEventListener('click', onOutsideClickCapture, true)
   await reload()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('pointerdown', onOutsidePointerDown, true)
+  window.removeEventListener('click', onOutsideClickCapture, true)
 })
 
 async function reload() {
@@ -155,13 +169,59 @@ function closeEditModal() {
   createGroupId.value = ''
 }
 
-function toggleSort(group: NavGroup) {
+function isSortKeepTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false
+  if (target.closest('.section-action--sort')) return true
+  if (target.closest('.section.sorting .grid')) return true
+  if (target.closest('.app-ctx-menu')) return true
+  if (target.closest('.modal-root')) return true
+  return false
+}
+
+function onOutsidePointerDown(e: PointerEvent) {
+  if (!sortingGroupId.value) return
+  if (Date.now() < ignoreOutsideUntil) return
+  if (isSortKeepTarget(e.target)) return
+  suppressClick = true
+  void finishSort()
+}
+
+function onOutsideClickCapture(e: MouseEvent) {
+  if (!suppressClick) return
+  suppressClick = false
+  e.preventDefault()
+  e.stopPropagation()
+}
+
+async function finishSort() {
+  const groupId = sortingGroupId.value
+  if (!groupId) return
+  const group = groups.value.find((g) => g.id === groupId)
+  sortingGroupId.value = ''
+  dragItemId.value = ''
+  if (group?.items && !sortBusy.value) {
+    try {
+      await sortItems(
+        groupId,
+        group.items.map((x) => x.id),
+      )
+    } catch {
+      showToast(t('home.sortFailed'))
+      await reload()
+      return
+    }
+  }
+  showToast(t('home.sortDone'))
+}
+
+async function toggleSort(group: NavGroup) {
   closeMenu()
   if (sortingGroupId.value === group.id) {
-    sortingGroupId.value = ''
-    dragItemId.value = ''
-    showToast(t('home.sortDone'))
+    await finishSort()
     return
+  }
+  if (sortingGroupId.value) {
+    await finishSort()
   }
   sortingGroupId.value = group.id
   dragItemId.value = ''
@@ -220,6 +280,7 @@ async function onItemDrop(e: DragEvent, target: NavItem, groupId: string) {
 
 function onItemDragEnd() {
   dragItemId.value = ''
+  ignoreOutsideUntil = Date.now() + 400
 }
 
 async function onRemove(item: NavItem) {
@@ -344,7 +405,11 @@ function itemLabelClass(name: string) {
             :aria-label="sortingGroupId === group.id ? t('home.sortDone') : t('home.sortItems')"
             @click="toggleSort(group)"
           >
-            <Icon icon="lucide:pointer" width="15" height="15" stroke-width="2" />
+            <span
+              class="sort-hand-icon"
+              aria-hidden="true"
+              :style="sortIconStyle"
+            />
           </button>
         </div>
       </div>

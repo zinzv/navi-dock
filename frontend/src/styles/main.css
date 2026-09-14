@@ -446,9 +446,13 @@ select {
   height: 18px;
 }
 
-.app-shell .section-action--sort svg {
-  width: 15px;
-  height: 15px;
+.app-shell .section-action--sort .sort-hand-icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+  background: currentColor;
+  -webkit-mask: var(--sort-icon) center / contain no-repeat;
+  mask: var(--sort-icon) center / contain no-repeat;
 }
 
 .app-shell .section-action:hover,
