@@ -3,6 +3,7 @@ package repository
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -156,15 +157,60 @@ func (r *NavigationRepo) DeleteItem(userID, id string) error {
 
 func (r *NavigationRepo) SortItems(userID, groupID string, ids []string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
+		listed := make(map[string]struct{}, len(ids))
+		sourceGroups := map[string]struct{}{}
+
 		for i, id := range ids {
+			var current model.NavItem
+			err := tx.Select("id", "group_id").
+				Where("user_id = ? AND id = ?", userID, id).
+				First(&current).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return fmt.Errorf("item not found: %s", id)
+			}
+			if err != nil {
+				return err
+			}
+			if current.GroupID != groupID {
+				sourceGroups[current.GroupID] = struct{}{}
+			}
+			listed[id] = struct{}{}
 			res := tx.Model(&model.NavItem{}).
-				Where("user_id = ? AND id = ? AND group_id = ?", userID, id, groupID).
-				Update("sort", i)
+				Where("user_id = ? AND id = ?", userID, id).
+				Updates(map[string]interface{}{"group_id": groupID, "sort": i})
 			if res.Error != nil {
 				return res.Error
 			}
-			if res.RowsAffected == 0 {
-				return fmt.Errorf("item not found in group: %s", id)
+		}
+
+		var extras []model.NavItem
+		if err := tx.Where("user_id = ? AND group_id = ?", userID, groupID).
+			Order("sort ASC, created_at ASC").
+			Find(&extras).Error; err != nil {
+			return err
+		}
+		next := len(ids)
+		for i := range extras {
+			if _, ok := listed[extras[i].ID]; ok {
+				continue
+			}
+			if err := tx.Model(&extras[i]).Update("sort", next).Error; err != nil {
+				return err
+			}
+			next++
+		}
+
+		for srcID := range sourceGroups {
+			var remaining []model.NavItem
+			if err := tx.Where("user_id = ? AND group_id = ?", userID, srcID).
+				Order("sort ASC, created_at ASC").
+				Find(&remaining).Error; err != nil {
+				return err
+			}
+			for i := range remaining {
+				if err := tx.Model(&remaining[i]).Update("sort", i).Error; err != nil {
+					return err
+				}
 			}
 		}
 		return nil

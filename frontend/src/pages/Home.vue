@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, onMounted, onUnmounted, ref, type Ref } from 'vue'
+import { computed, inject, onMounted, ref, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
 import {
@@ -11,13 +11,9 @@ import {
   type NetworkMode,
 } from '../api/settings'
 import { useSettingsStore } from '../stores/settings'
+import { useItemReorder } from '../composables/useItemReorder'
 import AppContextMenu from '../components/AppContextMenu.vue'
 import EditItemModal from '../components/EditItemModal.vue'
-import sortHandIcon from '../assets/sort-hand.png'
-
-const sortIconStyle = {
-  '--sort-icon': `url("${sortHandIcon}")`,
-}
 
 const { t } = useI18n()
 const settings = useSettingsStore()
@@ -34,12 +30,6 @@ const menuItem = ref<NavItem | null>(null)
 const editOpen = ref(false)
 const editItem = ref<NavItem | null>(null)
 const createGroupId = ref('')
-
-const sortingGroupId = ref('')
-const dragItemId = ref('')
-const sortBusy = ref(false)
-let ignoreOutsideUntil = 0
-let suppressClick = false
 
 const filteredGroups = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
@@ -71,15 +61,37 @@ function matchItem(item: NavItem, q: string) {
   )
 }
 
-onMounted(async () => {
-  window.addEventListener('pointerdown', onOutsidePointerDown, true)
-  window.addEventListener('click', onOutsideClickCapture, true)
-  await reload()
+const {
+  dragging,
+  dragItemId,
+  hoverGroupId,
+  ghost,
+  suppressClick,
+  onItemPointerDown,
+} = useItemReorder({
+  groups,
+  enabled: () => !searchQuery.value.trim() && !editOpen.value,
+  onDragStart: () => closeMenu(),
+  onCommit: async ({ destGroupId, destIds }) => {
+    await sortItems(destGroupId, destIds)
+  },
+  onCommitError: async () => {
+    showToast(t('home.sortFailed'))
+    await reload()
+  },
 })
 
-onUnmounted(() => {
-  window.removeEventListener('pointerdown', onOutsidePointerDown, true)
-  window.removeEventListener('click', onOutsideClickCapture, true)
+const ghostStyle = computed(() => {
+  if (!ghost.value) return undefined
+  return {
+    left: `${ghost.value.x}px`,
+    top: `${ghost.value.y}px`,
+    width: `${ghost.value.width}px`,
+  }
+})
+
+onMounted(async () => {
+  await reload()
 })
 
 async function reload() {
@@ -129,13 +141,22 @@ function openItem(item: NavItem) {
   }
 }
 
+function onPointerDownItem(e: PointerEvent, item: NavItem, groupId: string) {
+  closeMenu()
+  onItemPointerDown(e, item, groupId)
+}
+
 function onItemClick(item: NavItem) {
-  if (sortingGroupId.value) return
+  if (dragging.value || suppressClick.value) return
   closeMenu()
   openItem(item)
 }
 
 function onItemContextMenu(e: MouseEvent, item: NavItem) {
+  if (dragging.value || suppressClick.value) {
+    e.preventDefault()
+    return
+  }
   e.preventDefault()
   e.stopPropagation()
   menuItem.value = item
@@ -167,120 +188,6 @@ function closeEditModal() {
   editOpen.value = false
   editItem.value = null
   createGroupId.value = ''
-}
-
-function isSortKeepTarget(target: EventTarget | null) {
-  if (!(target instanceof Element)) return false
-  if (target.closest('.section-action--sort')) return true
-  if (target.closest('.section.sorting .grid')) return true
-  if (target.closest('.app-ctx-menu')) return true
-  if (target.closest('.modal-root')) return true
-  return false
-}
-
-function onOutsidePointerDown(e: PointerEvent) {
-  if (!sortingGroupId.value) return
-  if (Date.now() < ignoreOutsideUntil) return
-  if (isSortKeepTarget(e.target)) return
-  suppressClick = true
-  void finishSort()
-}
-
-function onOutsideClickCapture(e: MouseEvent) {
-  if (!suppressClick) return
-  suppressClick = false
-  e.preventDefault()
-  e.stopPropagation()
-}
-
-async function finishSort() {
-  const groupId = sortingGroupId.value
-  if (!groupId) return
-  const group = groups.value.find((g) => g.id === groupId)
-  sortingGroupId.value = ''
-  dragItemId.value = ''
-  if (group?.items && !sortBusy.value) {
-    try {
-      await sortItems(
-        groupId,
-        group.items.map((x) => x.id),
-      )
-    } catch {
-      showToast(t('home.sortFailed'))
-      await reload()
-      return
-    }
-  }
-  showToast(t('home.sortDone'))
-}
-
-async function toggleSort(group: NavGroup) {
-  closeMenu()
-  if (sortingGroupId.value === group.id) {
-    await finishSort()
-    return
-  }
-  if (sortingGroupId.value) {
-    await finishSort()
-  }
-  sortingGroupId.value = group.id
-  dragItemId.value = ''
-  showToast(t('home.sortHint'))
-}
-
-function onItemDragStart(e: DragEvent, item: NavItem, groupId: string) {
-  if (sortingGroupId.value !== groupId) {
-    e.preventDefault()
-    return
-  }
-  dragItemId.value = item.id
-  if (e.dataTransfer) {
-    e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', item.id)
-  }
-}
-
-function onItemDragOver(e: DragEvent, groupId: string) {
-  if (sortingGroupId.value !== groupId || !dragItemId.value) return
-  e.preventDefault()
-  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
-}
-
-async function onItemDrop(e: DragEvent, target: NavItem, groupId: string) {
-  e.preventDefault()
-  if (sortingGroupId.value !== groupId || sortBusy.value) return
-  const sourceId = dragItemId.value || e.dataTransfer?.getData('text/plain') || ''
-  dragItemId.value = ''
-  if (!sourceId || sourceId === target.id) return
-
-  const group = groups.value.find((g) => g.id === groupId)
-  if (!group?.items) return
-  const items = [...group.items]
-  const from = items.findIndex((x) => x.id === sourceId)
-  const to = items.findIndex((x) => x.id === target.id)
-  if (from < 0 || to < 0 || from === to) return
-
-  const [moved] = items.splice(from, 1)
-  items.splice(to, 0, moved)
-  group.items = items
-
-  sortBusy.value = true
-  try {
-    await sortItems(
-      groupId,
-      items.map((x) => x.id),
-    )
-  } catch {
-    showToast(t('home.sortFailed'))
-    await reload()
-  } finally {
-    sortBusy.value = false
-  }
-}
-
-function onItemDragEnd() {
-  dragItemId.value = ''
-  ignoreOutsideUntil = Date.now() + 400
 }
 
 async function onRemove(item: NavItem) {
@@ -374,7 +281,7 @@ function itemLabelClass(name: string) {
 </script>
 
 <template>
-  <div>
+  <div class="home-board" :class="{ 'is-reordering': dragging }">
     <p v-if="searchQuery.trim() && !filteredGroups.length" class="search-empty">
       {{ t('search.noLocalResults', { q: searchQuery.trim() }) }}
     </p>
@@ -383,7 +290,10 @@ function itemLabelClass(name: string) {
       v-for="group in filteredGroups"
       :key="group.id"
       class="section"
-      :class="{ sorting: sortingGroupId === group.id }"
+      :data-group-id="group.id"
+      :class="{
+        'is-drop-target': dragging && hoverGroupId === group.id,
+      }"
     >
       <div class="section-head">
         <h2 class="section-title">{{ group.name }}</h2>
@@ -397,36 +307,22 @@ function itemLabelClass(name: string) {
           >
             <Icon icon="lucide:plus" width="18" height="18" stroke-width="2" />
           </button>
-          <button
-            type="button"
-            class="section-action section-action--sort"
-            :class="{ active: sortingGroupId === group.id }"
-            :title="sortingGroupId === group.id ? t('home.sortDone') : t('home.sortItems')"
-            :aria-label="sortingGroupId === group.id ? t('home.sortDone') : t('home.sortItems')"
-            @click="toggleSort(group)"
-          >
-            <span
-              class="sort-hand-icon"
-              aria-hidden="true"
-              :style="sortIconStyle"
-            />
-          </button>
         </div>
       </div>
-      <div class="grid">
+      <div class="grid" :class="{ 'is-empty': !(group.items && group.items.length) }">
         <button
           v-for="item in group.items || []"
           :key="item.id"
           class="app-item"
-          :class="{ dragging: dragItemId === item.id }"
+          :class="{ 'is-placeholder': dragging && dragItemId === item.id }"
           type="button"
-          :draggable="sortingGroupId === group.id"
+          :data-item-id="item.id"
+          :aria-grabbed="dragging && dragItemId === item.id"
+          draggable="false"
           @click="onItemClick(item)"
           @contextmenu="onItemContextMenu($event, item)"
-          @dragstart="onItemDragStart($event, item, group.id)"
-          @dragover="onItemDragOver($event, group.id)"
-          @drop="onItemDrop($event, item, group.id)"
-          @dragend="onItemDragEnd"
+          @pointerdown="onPointerDownItem($event, item, group.id)"
+          @dragstart.prevent
         >
           <div class="tile" :class="{ 'is-text': item.icon_type === 'text' }">
             <img
@@ -434,6 +330,7 @@ function itemLabelClass(name: string) {
               class="tile-img"
               :src="item.icon"
               alt=""
+              draggable="false"
             />
             <div v-else-if="item.icon_type === 'text'" class="tile-text-block">
               <div class="tile-text-main">{{ itemTileText(item) }}</div>
@@ -449,8 +346,43 @@ function itemLabelClass(name: string) {
           </div>
           <div class="app-label" :class="itemLabelClass(item.name)">{{ item.name }}</div>
         </button>
+        <div
+          v-if="!(group.items && group.items.length)"
+          class="group-drop-empty"
+        >
+          {{ dragging ? t('home.dropHere') : t('home.emptyGroup') }}
+        </div>
       </div>
     </section>
+
+    <div
+      v-if="ghost"
+      class="app-item app-item-ghost"
+      :class="{ 'is-returning': ghost.returning }"
+      :style="ghostStyle"
+    >
+      <div class="tile" :class="{ 'is-text': ghost.item.icon_type === 'text' }">
+        <img
+          v-if="ghost.item.icon_type === 'image' && ghost.item.icon"
+          class="tile-img"
+          :src="ghost.item.icon"
+          alt=""
+          draggable="false"
+        />
+        <div v-else-if="ghost.item.icon_type === 'text'" class="tile-text-block">
+          <div class="tile-text-main">{{ itemTileText(ghost.item) }}</div>
+          <div v-if="ghost.item.description" class="tile-text-desc">{{ ghost.item.description }}</div>
+        </div>
+        <Icon
+          v-else
+          class="tile-icon"
+          :icon="ghost.item.icon || 'mdi:application-outline'"
+          :width="iconOpticalSize(ghost.item)"
+          :height="iconOpticalSize(ghost.item)"
+        />
+      </div>
+      <div class="app-label" :class="itemLabelClass(ghost.item.name)">{{ ghost.item.name }}</div>
+    </div>
 
     <AppContextMenu
       :open="menuOpen"
