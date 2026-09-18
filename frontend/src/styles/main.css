@@ -353,27 +353,6 @@ select {
   box-shadow: inset 0 0 0 2px rgba(140, 230, 255, 0.16);
 }
 
-.app-shell .net-badge {
-  position: absolute;
-  right: 3px;
-  bottom: 3px;
-  min-width: 11px;
-  height: 11px;
-  padding: 0 2px;
-  border-radius: 999px;
-  font-size: 7px;
-  line-height: 9px;
-  font-weight: 700;
-  background: rgba(12, 20, 28, 0.92);
-  border: 1px solid currentColor;
-  color: inherit;
-  opacity: 0.95;
-  box-sizing: border-box;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .app-shell .main {
   position: relative;
   z-index: 5;
@@ -842,12 +821,6 @@ html[data-theme='light'] .app-shell .app-item:active .tile {
   transform: translateY(0) scale(var(--active-scale));
 }
 
-html[data-theme='light'] .app-shell .net-badge {
-  background: rgba(255, 255, 255, 0.92);
-  border-color: currentColor;
-  color: inherit;
-}
-
 html[data-theme='light'] .app-shell .search-empty {
   color: rgba(21, 32, 51, 0.55);
 }
@@ -1018,26 +991,6 @@ html[data-theme='dark'] .settings-shell .side-nav-item.active {
 .settings-shell a:focus-visible {
   outline: 2px solid rgba(99, 102, 241, 0.6);
   outline-offset: 2px;
-}
-
-.settings-shell .net-badge {
-  position: absolute;
-  right: 4px;
-  bottom: 4px;
-  min-width: 12px;
-  height: 12px;
-  padding: 0 2px;
-  border-radius: 999px;
-  font-size: 8px;
-  line-height: 9px;
-  font-weight: 600;
-  background: transparent;
-  border: 1.5px solid currentColor;
-  color: inherit;
-  box-sizing: border-box;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
 }
 
 @media (min-width: 1200px) and (max-width: 1599px) {

@@ -2,7 +2,8 @@ import { nextTick, onUnmounted, ref, type Ref } from 'vue'
 import type { NavGroup, NavItem } from '../api/settings'
 
 const LONG_PRESS_MS = 360
-const MOVE_CANCEL_PX = 12
+const MOUSE_DRAG_START_PX = 16
+const TOUCH_MOVE_CANCEL_PX = 14
 const GROUP_MAGNET_PX = 20
 const GROUP_INTENT_MS = 100
 const FAST_POINTER_PX_MS = 1.4
@@ -200,6 +201,7 @@ export function useItemReorder(options: {
   let snapshot: NavGroup[] = []
   let originGroupId = ''
   let pointerId = -1
+  let pointerKind = ''
   let pointer: Point = { x: 0, y: 0 }
   let originPointer: Point = { x: 0, y: 0 }
   let lastPointer: Point = { x: 0, y: 0 }
@@ -209,11 +211,26 @@ export function useItemReorder(options: {
   let longPressTimer = 0
   let intentTimer = 0
   let pendingGroupId = ''
+  let pendingItem: NavItem | null = null
+  let originEl: HTMLElement | null = null
   let previewJob: { groupId: string; index: number } | null = null
   let raf = 0
   let sessionActive = false
   let finishing = false
   let saveQueue: Promise<void> = Promise.resolve()
+
+  function isTouchLike() {
+    return pointerKind === 'touch' || pointerKind === 'pen'
+  }
+
+  function releaseCapture() {
+    if (!originEl || pointerId < 0) return
+    try {
+      if (originEl.hasPointerCapture(pointerId)) originEl.releasePointerCapture(pointerId)
+    } catch {
+      /* already released */
+    }
+  }
 
   function clearTimers() {
     window.clearTimeout(longPressTimer)
@@ -241,10 +258,12 @@ export function useItemReorder(options: {
     clearTimers()
     stopLoop()
     unbindWindow()
+    releaseCapture()
     document.body.classList.remove('is-item-dragging')
     sessionActive = false
     finishing = false
     pointerId = -1
+    pointerKind = ''
     velocity = 0
     dragging.value = false
     dragItemId.value = ''
@@ -253,7 +272,17 @@ export function useItemReorder(options: {
     ghost.value = null
     snapshot = []
     originGroupId = ''
+    pendingItem = null
+    originEl = null
     previewJob = null
+  }
+
+  function beginDrag() {
+    if (!sessionActive || dragging.value || finishing) return
+    if (!pendingItem || !originEl) return
+    window.clearTimeout(longPressTimer)
+    longPressTimer = 0
+    startDrag(pendingItem, originEl)
   }
 
   function hitTestGroup(x: number, y: number) {
@@ -531,7 +560,14 @@ export function useItemReorder(options: {
 
     if (!dragging.value) {
       const moved = Math.hypot(pointer.x - originPointer.x, pointer.y - originPointer.y)
-      if (moved > MOVE_CANCEL_PX) resetSession()
+      if (isTouchLike()) {
+        if (moved > TOUCH_MOVE_CANCEL_PX) resetSession()
+        return
+      }
+      if (moved > MOUSE_DRAG_START_PX) {
+        event.preventDefault()
+        beginDrag()
+      }
       return
     }
     event.preventDefault()
@@ -568,21 +604,30 @@ export function useItemReorder(options: {
     if (event.ctrlKey || event.metaKey || event.altKey) return
     if (finishing || sessionActive) return
 
-    const originEl = event.currentTarget
-    if (!(originEl instanceof HTMLElement)) return
+    const el = event.currentTarget
+    if (!(el instanceof HTMLElement)) return
 
     sessionActive = true
     pointerId = event.pointerId
+    pointerKind = event.pointerType || 'mouse'
     pointer = { x: event.clientX, y: event.clientY }
     originPointer = pointer
     lastPointer = pointer
     lastPointerAt = performance.now()
     velocity = 0
-    const rect = originEl.getBoundingClientRect()
+    pendingItem = item
+    originEl = el
+    const rect = el.getBoundingClientRect()
     grabOffset = { x: event.clientX - rect.left, y: event.clientY - rect.top }
     dragItemId.value = item.id
     originGroupId = groupId
     snapshot = cloneGroups(options.groups.value)
+
+    try {
+      el.setPointerCapture(event.pointerId)
+    } catch {
+      /* capture is optional */
+    }
 
     window.addEventListener('pointermove', onPointerMove, { passive: false })
     window.addEventListener('pointerup', onPointerUp)
@@ -592,8 +637,7 @@ export function useItemReorder(options: {
 
     longPressTimer = window.setTimeout(() => {
       longPressTimer = 0
-      if (!sessionActive || dragging.value) return
-      startDrag(item, originEl)
+      beginDrag()
     }, LONG_PRESS_MS)
   }
 
