@@ -17,6 +17,7 @@ services:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
       APP_VERSION: ${APP_VERSION:-}
+      LAN_PROBE_DOMAIN: ${LAN_PROBE_DOMAIN:-}
     volumes:
       - ./data:/data
     restart: unless-stopped

@@ -8,15 +8,17 @@ import {
   sortItems,
   type NavGroup,
   type NavItem,
-  type NetworkMode,
 } from '../api/settings'
 import { useSettingsStore } from '../stores/settings'
+import { useNetworkStore } from '../stores/network'
+import { resolveNavigationURL } from '../services/network'
 import { useItemReorder } from '../composables/useItemReorder'
 import AppContextMenu from '../components/AppContextMenu.vue'
 import EditItemModal from '../components/EditItemModal.vue'
 
 const { t } = useI18n()
 const settings = useSettingsStore()
+const network = useNetworkStore()
 const searchQuery = inject<Ref<string>>('homeSearchQuery', ref(''))
 const groups = ref<NavGroup[]>([])
 const toast = ref('')
@@ -111,24 +113,29 @@ function showToast(msg: string) {
   }, 1600)
 }
 
-function defaultUrl(item: NavItem) {
-  return (item.external_url || item.url || '').trim()
+function resolvedItem(item: NavItem) {
+  return resolveNavigationURL(item, settings.networkMode, network.effectiveNetwork)
 }
 
-function internalUrl(item: NavItem) {
-  return (item.internal_url || '').trim()
+function isLANOnlyUnavailable(item: NavItem) {
+  return settings.networkMode === 'auto' && resolvedItem(item).lanOnly
 }
 
-function resolveOpenUrl(item: NavItem, mode: NetworkMode = settings.networkMode) {
-  const external = defaultUrl(item)
-  const internal = internalUrl(item)
-  if (mode === 'internal') return internal || external
-  if (mode === 'external') return external || internal
-  return external || internal
+function itemAccessTitle(item: NavItem) {
+  const resolved = resolvedItem(item)
+  if (resolved.lanOnly) return t('home.lanOnly')
+  const networkLabel =
+    resolved.network === 'internal' ? t('network.internal') : t('network.external')
+  return t('home.accessVia', { network: networkLabel })
 }
 
 function openItem(item: NavItem) {
-  const url = resolveOpenUrl(item)
+  const resolved = resolvedItem(item)
+  if (resolved.lanOnly) {
+    showToast(t('home.lanOnly'))
+    return
+  }
+  const url = resolved.url
   if (!url) {
     showToast(t('home.noUrl'))
     return
@@ -261,10 +268,10 @@ const opticallyNarrowIconHints = [
 
 function iconOpticalSize(item: NavItem) {
   const identity = `${item.name || ''} ${item.icon || ''}`.toLowerCase()
-  if (opticallyLargeIconHints.some((hint) => identity.includes(hint))) return 27
-  if (opticallySmallIconHints.some((hint) => identity.includes(hint))) return 31
-  if (opticallyNarrowIconHints.some((hint) => identity.includes(hint))) return 30
-  return 29
+  if (opticallyLargeIconHints.some((hint) => identity.includes(hint))) return 25
+  if (opticallySmallIconHints.some((hint) => identity.includes(hint))) return 29
+  if (opticallyNarrowIconHints.some((hint) => identity.includes(hint))) return 28
+  return 27
 }
 
 function itemLabelClass(name: string) {
@@ -314,9 +321,13 @@ function itemLabelClass(name: string) {
           v-for="item in group.items || []"
           :key="item.id"
           class="app-item"
-          :class="{ 'is-placeholder': dragging && dragItemId === item.id }"
+          :class="{
+            'is-placeholder': dragging && dragItemId === item.id,
+            'is-lan-only': isLANOnlyUnavailable(item),
+          }"
           type="button"
           :data-item-id="item.id"
+          :title="itemAccessTitle(item)"
           :aria-grabbed="dragging && dragItemId === item.id"
           draggable="false"
           @click="onItemClick(item)"

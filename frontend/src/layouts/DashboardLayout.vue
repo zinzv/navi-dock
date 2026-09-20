@@ -7,9 +7,11 @@ import ThemeSwitcher from '../components/ThemeSwitcher.vue'
 import NetworkSwitcher from '../components/NetworkSwitcher.vue'
 import SceneDecor from '../components/SceneDecor.vue'
 import { useSettingsStore } from '../stores/settings'
+import { useNetworkStore } from '../stores/network'
 
 const { t } = useI18n()
 const settings = useSettingsStore()
+const network = useNetworkStore()
 const searchQuery = ref('')
 const searchInput = ref<HTMLInputElement | null>(null)
 
@@ -60,6 +62,7 @@ function onGlobalKeydown(e: KeyboardEvent) {
 }
 
 onMounted(() => {
+  void network.start()
   document.addEventListener('click', closeMenus)
   document.addEventListener('keydown', onGlobalKeydown)
 })

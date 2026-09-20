@@ -376,15 +376,14 @@ async function onDelete() {
           </div>
 
           <div class="field">
-            <label class="field-label">
-              {{ t('edit.defaultUrl') }} <span class="req">*</span>
-            </label>
+            <label class="field-label">{{ t('edit.defaultUrl') }}</label>
             <input
               v-model="form.externalUrl"
               class="input w-url"
               type="url"
               :placeholder="t('edit.urlPlaceholder')"
             />
+            <span class="url-hint">{{ t('edit.externalUrlHint') }}</span>
           </div>
 
           <div class="field">
@@ -395,6 +394,8 @@ async function onDelete() {
               type="url"
               :placeholder="t('edit.urlPlaceholder')"
             />
+            <span class="url-hint">{{ t('edit.internalUrlHint') }}</span>
+            <span class="url-hint">{{ t('edit.singleUrlHint') }}</span>
           </div>
 
           <div class="field">
@@ -707,6 +708,12 @@ async function onDelete() {
   font-size: 13px;
   color: var(--modal-text);
   font-weight: 500;
+}
+
+.url-hint {
+  color: var(--modal-mute);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .field-label-row {

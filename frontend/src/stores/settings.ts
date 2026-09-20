@@ -58,7 +58,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const siteIcon = ref('')
   const language = ref<AppLocale>('zh')
   const theme = ref<ThemeMode>('dark')
-  const networkMode = ref<'auto' | 'internal' | 'external'>('auto')
+  const networkMode = ref<'auto' | 'internal' | 'external'>('internal')
   const backgroundImage = ref('')
   const backgroundOpacity = ref(0.35)
 
@@ -75,7 +75,7 @@ export const useSettingsStore = defineStore('settings', () => {
     }
     siteIcon.value = data.site_icon || ''
     theme.value = data.theme || 'dark'
-    networkMode.value = data.network_mode || 'auto'
+    networkMode.value = data.network_mode || 'internal'
     backgroundImage.value = data.background_image || ''
     backgroundOpacity.value = clampOpacity(data.background_opacity ?? 0.35)
     applyLocal()

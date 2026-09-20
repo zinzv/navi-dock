@@ -16,10 +16,11 @@ import (
 )
 
 type Handler struct {
-	settings   *service.SettingsService
-	navigation *service.NavigationService
-	auth       *service.AuthService
-	dataDir    string
+	settings    *service.SettingsService
+	navigation  *service.NavigationService
+	auth        *service.AuthService
+	dataDir        string
+	lanProbeDomain string
 }
 
 func NewHandler(
@@ -27,14 +28,22 @@ func NewHandler(
 	navigation *service.NavigationService,
 	auth *service.AuthService,
 	dataDir string,
+	lanProbeDomain string,
 ) *Handler {
-	return &Handler{settings: settings, navigation: navigation, auth: auth, dataDir: dataDir}
+	return &Handler{
+		settings:       settings,
+		navigation:     navigation,
+		auth:           auth,
+		dataDir:        dataDir,
+		lanProbeDomain: strings.TrimSpace(lanProbeDomain),
+	}
 }
 
 func (h *Handler) Register(r *gin.Engine) {
 	api := r.Group("/api")
 	{
 		api.GET("/health", h.Health)
+		api.GET("/network/ping", h.NetworkPing)
 
 		api.GET("/auth/status", h.optionalAuth, h.AuthStatus)
 		api.POST("/auth/login", h.Login)
@@ -46,12 +55,14 @@ func (h *Handler) Register(r *gin.Engine) {
 
 		api.GET("/settings", h.requireAuth, h.GetSettings)
 		api.PUT("/settings", h.requireAuth, h.UpdateSettings)
+		api.GET("/network/config", h.requireAuth, h.GetNetworkConfig)
 		api.POST("/settings/background", h.requireAuth, h.UploadBackground)
 		api.DELETE("/settings/background", h.requireAuth, h.ClearBackground)
 		api.POST("/settings/site-icon", h.requireAuth, h.UploadSiteIcon)
 		api.DELETE("/settings/site-icon", h.requireAuth, h.ClearSiteIcon)
 		api.GET("/assets/:kind", h.requireAuth, h.ListAssets)
 		api.POST("/assets/:kind", h.requireAuth, h.UploadAsset)
+		api.DELETE("/assets/:kind/:name", h.requireAuth, h.DeleteAsset)
 		api.GET("/navigation", h.requireAuth, h.GetNavigation)
 
 		api.GET("/groups", h.requireAuth, h.ListGroups)
@@ -76,6 +87,18 @@ func (h *Handler) Health(c *gin.Context) {
 		"status":  "ok",
 		"service": "naviDock",
 		"version": version.Current(),
+	})
+}
+
+func (h *Handler) NetworkPing(c *gin.Context) {
+	c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+	c.Header("Pragma", "no-cache")
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) GetNetworkConfig(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"probe_domain": h.lanProbeDomain,
 	})
 }
 
@@ -347,6 +370,55 @@ func (h *Handler) UploadAsset(c *gin.Context) {
 	}
 	publicPath := userAssetURL(user.ID, dirName, name)
 	c.JSON(http.StatusOK, gin.H{"kind": dirName, "name": name, "url": publicPath})
+}
+
+func (h *Handler) DeleteAsset(c *gin.Context) {
+	user := requireCurrentUser(c)
+	if user == nil {
+		return
+	}
+	dirName, ok := assetKindDir(c.Param("kind"))
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "kind must be icons or wallpapers"})
+		return
+	}
+
+	name := strings.TrimSpace(c.Param("name"))
+	if name == "" || name == "." || name == ".." || filepath.Base(name) != name {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid asset name"})
+		return
+	}
+
+	target := filepath.Join(userAssetDir(h.dataDir, user.ID, dirName), name)
+	if err := os.Remove(target); err != nil {
+		if os.IsNotExist(err) {
+			c.JSON(http.StatusNotFound, gin.H{"message": "asset not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
+
+	publicPath := userAssetURL(user.ID, dirName, name)
+	settings, err := h.settings.Get(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
+	if dirName == "icons" && settings.SiteIcon == publicPath {
+		if _, err := h.settings.SetSiteIcon(user.ID, ""); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+			return
+		}
+	}
+	if dirName == "wallpapers" && settings.BackgroundImage == publicPath {
+		if _, err := h.settings.SetBackgroundImage(user.ID, ""); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 func (h *Handler) GetNavigation(c *gin.Context) {

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
 import { useSettingsStore } from '../stores/settings'
+import { useNetworkStore } from '../stores/network'
 import AccountSettings from '../components/AccountSettings.vue'
 import GroupManager from '../components/GroupManager.vue'
 import AssetGallery from '../components/AssetGallery.vue'
@@ -11,13 +12,38 @@ import { exportNavigation, importNavigation } from '../api/settings'
 import { fetchAppVersion } from '../api/health'
 
 const version = ref('…')
+let sectionObserver: IntersectionObserver | undefined
 
 onMounted(async () => {
   version.value = await fetchAppVersion()
+  await nextTick()
+  const sections = sideMenus
+    .map((item) => document.getElementById(`settings-${item.id}`))
+    .filter((el): el is HTMLElement => Boolean(el))
+  sectionObserver = new IntersectionObserver(
+    (entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
+      if (visible[0]) activeSection.value = visible[0].target.id.replace('settings-', '')
+    },
+    {
+      rootMargin: '-112px 0px -62% 0px',
+      threshold: [0, 0.1],
+    },
+  )
+  sections.forEach((section) => sectionObserver?.observe(section))
+})
+
+onUnmounted(() => {
+  sectionObserver?.disconnect()
+  window.clearTimeout(titleTimer)
+  window.clearTimeout(opacityTimer)
 })
 
 const { t } = useI18n()
 const settings = useSettingsStore()
+const network = useNetworkStore()
 const siteTitle = ref(settings.siteTitle)
 const opacityPercent = ref(Math.round(settings.backgroundOpacity * 100))
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -30,11 +56,31 @@ const activeSection = ref('account')
 const sideMenus = [
   { id: 'account', labelKey: 'settings.account' },
   { id: 'general', labelKey: 'settings.general' },
+  { id: 'network', labelKey: 'settings.networkAccess' },
   { id: 'groups', labelKey: 'settings.groups' },
   { id: 'background', labelKey: 'settings.background' },
   { id: 'backup', labelKey: 'settings.backup' },
   { id: 'about', labelKey: 'settings.about' },
 ] as const
+
+const probeConfigured = computed(() => Boolean(network.probeDomain))
+const probeDisplay = computed(() => {
+  if (!network.configured) return t('settings.networkProbeLoading')
+  if (!network.probeDomain) return t('settings.networkProbeMissing')
+  return network.probeDomain
+})
+const probeEffectiveURL = computed(() => network.probeUrl || '')
+const currentModeLabel = computed(() => {
+  if (settings.networkMode === 'internal') return t('network.internal')
+  if (settings.networkMode === 'external') return t('network.external')
+  return t('network.auto')
+})
+const detectedLabel = computed(() => {
+  if (!probeConfigured.value) return t('network.notConfigured')
+  if (network.status === 'checking') return t('network.checking')
+  if (network.status === 'unknown') return t('network.unknown')
+  return network.status === 'internal' ? t('network.internal') : t('network.external')
+})
 
 function scrollToSection(id: string) {
   activeSection.value = id
@@ -294,9 +340,10 @@ async function onImportFile(e: Event) {
                 {{ t('settings.siteIconUpload') }}
               </button>
               <button
+                v-if="settings.siteIcon"
                 type="button"
                 class="danger-ghost-btn"
-                :disabled="settings.saving || !settings.siteIcon"
+                :disabled="settings.saving"
                 @click="onRemoveIcon"
               >
                 {{ t('settings.siteIconRemove') }}
@@ -306,6 +353,41 @@ async function onImportFile(e: Event) {
         </div>
       </div>
     </section>
+
+        <section id="settings-network" class="card">
+          <h2 class="card-title">{{ t('settings.networkAccess') }}</h2>
+          <p class="card-hint">{{ t('settings.networkAccessHint') }}</p>
+          <div class="rows">
+            <div class="row row-align-start">
+              <span class="label">{{ t('settings.networkHowTitle') }}</span>
+              <ul class="principle-list">
+                <li>{{ t('settings.networkHowAuto') }}</li>
+                <li>{{ t('settings.networkHowInternal') }}</li>
+                <li>{{ t('settings.networkHowExternal') }}</li>
+              </ul>
+            </div>
+            <div class="row">
+              <span class="label">{{ t('settings.networkCurrentMode') }}</span>
+              <span class="value">{{ currentModeLabel }}</span>
+            </div>
+            <div class="row">
+              <span class="label">{{ t('settings.networkDetected') }}</span>
+              <span class="value">{{ detectedLabel }}</span>
+            </div>
+            <div class="row row-align-start">
+              <span class="label">{{ t('settings.networkProbe') }}</span>
+              <div class="probe-meta">
+                <span class="value mono probe-url" :class="{ muted: !probeConfigured }">{{
+                  probeDisplay
+                }}</span>
+                <span v-if="probeEffectiveURL" class="hint mono">{{ probeEffectiveURL }}</span>
+                <span class="hint">{{ t('settings.networkProbeEnv') }}</span>
+                <code class="probe-example">LAN_PROBE_DOMAIN=lan.zeven.site</code>
+                <span class="hint">{{ t('settings.networkProbeNote') }}</span>
+              </div>
+            </div>
+          </div>
+        </section>
 
         <div id="settings-groups" class="section-anchor">
           <GroupManager @saved="flashSaved" />
@@ -350,9 +432,10 @@ async function onImportFile(e: Event) {
                 {{ t('settings.backgroundUpload') }}
               </button>
               <button
+                v-if="settings.backgroundImage"
                 type="button"
                 class="danger-ghost-btn"
-                :disabled="settings.saving || !settings.backgroundImage"
+                :disabled="settings.saving"
                 @click="onRemoveBackground"
               >
                 {{ t('settings.backgroundRemove') }}
@@ -452,8 +535,8 @@ async function onImportFile(e: Event) {
 
 <style scoped>
 .settings {
-  padding: 24px 32px 72px;
-  max-width: 1180px;
+  width: min(var(--ds-container), calc(100% - (var(--ds-gutter) * 2)));
+  padding: 30px 0 72px;
   margin: 0 auto;
 }
 
@@ -461,20 +544,20 @@ async function onImportFile(e: Event) {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 30px;
+  margin-bottom: 32px;
 }
 
 .settings-body {
   display: grid;
-  grid-template-columns: 168px minmax(0, 1fr);
+  grid-template-columns: 180px minmax(0, 1fr);
   align-items: flex-start;
-  gap: 28px;
+  gap: 32px;
 }
 
 .settings-side {
   position: sticky;
-  top: 88px;
-  width: 168px;
+  top: 104px;
+  width: 180px;
 }
 
 .side-nav {
@@ -489,12 +572,12 @@ async function onImportFile(e: Event) {
 .side-nav-item {
   border: 0;
   background: transparent;
-  color: rgba(20, 30, 45, 0.62);
+  color: var(--sv-mute);
   text-align: left;
   min-height: 40px;
   padding: 8px 14px;
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: var(--ds-radius-sm);
+  font-size: 14px;
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
@@ -505,8 +588,8 @@ async function onImportFile(e: Event) {
 }
 
 .side-nav-item.active {
-  color: #5d63e8;
-  background: rgba(99, 102, 241, 0.09);
+  color: var(--sv-accent);
+  background: var(--sv-accent-weak);
 }
 
 .settings-main {
@@ -515,20 +598,22 @@ async function onImportFile(e: Event) {
 }
 
 .section-anchor {
-  scroll-margin-top: 96px;
+  scroll-margin-top: 104px;
 }
 
 #settings-account,
 #settings-general,
+#settings-network,
 #settings-background,
 #settings-backup,
 #settings-about {
-  scroll-margin-top: 96px;
+  scroll-margin-top: 104px;
 }
 
 .settings h1 {
-  font-size: 28px;
-  font-weight: 600;
+  font-size: 30px;
+  line-height: 40px;
+  font-weight: 650;
   margin: 0;
 }
 
@@ -540,16 +625,20 @@ async function onImportFile(e: Event) {
 .card {
   background: var(--sv-surface);
   border: 1px solid var(--sv-border);
-  border-radius: 12px;
-  padding: 22px 26px;
-  margin-bottom: 20px;
-  box-shadow: none;
+  border-radius: var(--ds-radius-lg);
+  padding: 24px 28px;
+  margin-bottom: 16px;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.018),
+    0 8px 30px rgba(30, 70, 100, 0.024);
+  backdrop-filter: blur(14px);
 }
 
 .card-title {
-  margin: 0 0 10px;
-  font-size: 18px;
-  font-weight: 600;
+  margin: 0 0 12px;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 650;
   color: var(--sv-text);
 }
 
@@ -570,10 +659,57 @@ async function onImportFile(e: Event) {
   grid-template-columns: 160px minmax(0, 1fr);
   align-items: center;
   gap: 16px;
-  min-height: 58px;
-  padding: 8px 0;
+  min-height: 64px;
+  padding: 12px 0;
   font-size: 14px;
   border-top: 1px solid color-mix(in srgb, var(--sv-border) 60%, transparent);
+}
+
+.row-align-start {
+  align-items: start;
+}
+
+.principle-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--sv-regular);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.principle-list li + li {
+  margin-top: 4px;
+}
+
+.probe-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.probe-url {
+  text-align: left;
+  color: var(--sv-text);
+}
+
+.probe-url.muted {
+  color: var(--sv-mute);
+}
+
+.probe-example {
+  display: inline-block;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--sv-border);
+  border-radius: var(--ds-radius-sm);
+  background: color-mix(in srgb, var(--sv-surface) 70%, var(--ds-page));
+  color: var(--sv-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-all;
 }
 
 .rows .row:first-child {
@@ -652,8 +788,8 @@ async function onImportFile(e: Event) {
   color: #fff;
   border: none;
   border-radius: 8px;
-  height: 36px;
-  padding: 0 14px;
+  height: 38px;
+  padding: 0 15px;
   font-size: 13px;
   cursor: pointer;
   transition: opacity 0.18s ease-out;
@@ -668,8 +804,8 @@ async function onImportFile(e: Event) {
 
 .primary-btn:disabled,
 .link-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
+  opacity: 0.38;
+  cursor: not-allowed;
 }
 
 .link-btn {
@@ -692,7 +828,7 @@ async function onImportFile(e: Event) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 36px;
+  height: 38px;
   padding: 0 12px;
   border: 1px solid var(--sv-border);
   border-radius: 8px;
@@ -809,7 +945,9 @@ async function onImportFile(e: Event) {
 
 .opacity-range {
   width: 100%;
-  accent-color: var(--sv-accent);
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
   height: 16px;
   margin: 0;
 }
@@ -838,13 +976,37 @@ async function onImportFile(e: Event) {
 }
 
 .opacity-range::-webkit-slider-thumb {
-  width: 15px;
-  height: 15px;
-  margin-top: -5.5px;
-  border: 0;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 2px solid var(--sv-surface);
   border-radius: 50%;
   background: var(--sv-accent);
   -webkit-appearance: none;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.18);
+  cursor: pointer;
+}
+
+.opacity-range::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(20, 30, 40, 0.12);
+}
+
+.opacity-range::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--sv-accent);
+}
+
+.opacity-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--sv-surface);
+  border-radius: 50%;
+  background: var(--sv-accent);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.18);
+  cursor: pointer;
 }
 
 .setting-copy {
@@ -879,23 +1041,43 @@ async function onImportFile(e: Event) {
 .settings-main :deep(.card) {
   background: var(--sv-surface);
   border: 1px solid var(--sv-border);
-  border-radius: 12px;
-  margin-bottom: 20px;
-  box-shadow: none;
+  border-radius: var(--ds-radius-lg);
+  padding: 24px 28px;
+  margin-bottom: 16px;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.018),
+    0 8px 30px rgba(30, 70, 100, 0.024);
+  backdrop-filter: blur(14px);
 }
 
 .settings-main :deep(.card-title) {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 650;
 }
 
 .settings-main :deep(.row) {
-  min-height: 58px;
+  min-height: 64px;
+  padding-top: 12px;
+  padding-bottom: 12px;
   border-color: color-mix(in srgb, var(--sv-border) 60%, transparent);
 }
 
 .settings-main :deep(.rows) {
   max-width: 900px;
+}
+
+.settings-main :deep(.primary-btn),
+.settings-main :deep(.secondary-btn),
+.settings-main :deep(.logout-btn) {
+  min-height: 38px;
+  border-radius: var(--ds-radius-sm);
+}
+
+.settings-main :deep(.icon-action) {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--ds-radius-sm);
 }
 
 :global(html[data-theme='dark']) .side-nav-item.active {
@@ -930,6 +1112,10 @@ async function onImportFile(e: Event) {
   );
 }
 
+:global(html[data-theme='dark']) .opacity-range::-moz-range-track {
+  background: rgba(255, 255, 255, 0.14);
+}
+
 .io-status {
   margin: 0 0 12px;
   font-size: 13px;
@@ -944,7 +1130,8 @@ async function onImportFile(e: Event) {
 
 @media (max-width: 640px) {
   .settings {
-    padding: 20px 16px 40px;
+    width: calc(100% - 32px);
+    padding: 20px 0 40px;
   }
 
   .settings-body {
@@ -984,6 +1171,30 @@ async function onImportFile(e: Event) {
 
   .segmented button {
     flex: 1;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 900px) {
+  .settings {
+    width: calc(100% - 40px);
+  }
+
+  .settings-body {
+    grid-template-columns: 144px minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  .settings-side {
+    width: 144px;
+  }
+
+  .row:not(.row-stack) {
+    grid-template-columns: 132px minmax(0, 1fr);
+  }
+
+  .card,
+  .settings-main :deep(.card) {
+    padding: 20px 22px;
   }
 }
 </style>

@@ -73,3 +73,27 @@ APP_VERSION=v0.1.0 docker compose build
 ```
 
 Vite proxies `/api` to `http://127.0.0.1:7530`.
+
+## Automatic network detection
+
+Automatic access mode requires an explicit environment variable:
+
+```env
+LAN_PROBE_DOMAIN=lan.zeven.site
+```
+
+This must be set in the deployment environment (for example `.env` or Docker Compose
+`environment`). It cannot be configured from the settings UI.
+
+Only the domain is configurable. The probe path is fixed to `/api/network/ping`, and
+the browser uses the same HTTP/HTTPS protocol as the current NaviDock page with a
+built-in 1000ms timeout.
+
+Configure split DNS so the probe hostname resolves to this NaviDock instance only
+inside the LAN. The probe endpoint is public, returns `204 No Content`, and disables
+caching. When NaviDock uses HTTPS, the probe hostname also needs a valid certificate.
+
+How modes work:
+
+- **Auto**: stay in auto mode; probe result only chooses internal vs external URL
+- **Internal / External**: force the corresponding URL regardless of probe result

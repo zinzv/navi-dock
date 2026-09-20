@@ -8,7 +8,8 @@ RUN npm run build
 FROM golang:1.24-alpine AS backend-builder
 ARG VERSION=
 WORKDIR /src
-RUN apk add --no-cache git ca-certificates
+RUN sed -i 's#https\?://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g' /etc/apk/repositories \
+  && apk add --no-cache git ca-certificates
 COPY backend/go.mod backend/go.sum ./
 RUN go env -w GOPROXY=https://goproxy.cn,direct && go mod download
 COPY backend/ ./
@@ -22,7 +23,8 @@ RUN VER="${VERSION:-$(tr -d '[:space:]' </tmp/VERSION 2>/dev/null || echo dev)}"
 
 FROM alpine:3.21
 ARG VERSION=
-RUN apk add --no-cache ca-certificates tzdata su-exec wget
+RUN sed -i 's#https\?://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g' /etc/apk/repositories \
+  && apk add --no-cache ca-certificates tzdata su-exec wget
 WORKDIR /app
 COPY --from=backend-builder /out/navidock /app/navidock
 COPY --from=backend-builder /out/VERSION /app/VERSION

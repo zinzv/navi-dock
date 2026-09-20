@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
 import {
+  deleteAsset,
   listAssets,
   uploadAsset,
   type AssetItem,
@@ -26,6 +27,7 @@ const kind = ref<AssetKind>(props.initialKind || 'icons')
 const items = ref<AssetItem[]>([])
 const loading = ref(false)
 const uploading = ref(false)
+const deletingUrl = ref('')
 const error = ref('')
 const selectedUrl = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -116,6 +118,25 @@ async function onFileChange(e: Event) {
     uploading.value = false
   }
 }
+
+async function onDelete(item: AssetItem) {
+  if (deletingUrl.value) return
+  if (!window.confirm(t('edit.galleryDeleteConfirm', { name: item.name }))) return
+  deletingUrl.value = item.url
+  error.value = ''
+  const clearsCurrent =
+    settings.siteIcon === item.url || settings.backgroundImage === item.url
+  try {
+    await deleteAsset(kind.value, item.name)
+    items.value = items.value.filter((candidate) => candidate.url !== item.url)
+    if (selectedUrl.value === item.url) selectedUrl.value = ''
+    if (clearsCurrent) await settings.load()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : t('edit.galleryDeleteFailed')
+  } finally {
+    deletingUrl.value = ''
+  }
+}
 </script>
 
 <template>
@@ -202,21 +223,41 @@ async function onFileChange(e: Event) {
             class="gallery-grid"
             :class="{ wallpapers: kind === 'wallpapers', icons: kind === 'icons' }"
           >
-            <button
+            <div
               v-for="item in items"
               :key="item.url"
-              type="button"
-              class="gallery-item"
-              :class="{ selected: selectedUrl === item.url }"
-              :title="item.name"
-              @click="onSelect(item.url)"
-              @dblclick="selectedUrl = item.url; onUse()"
+              class="gallery-card"
             >
-              <img :src="item.url" :alt="item.name" />
-              <span v-if="selectedUrl === item.url" class="check">
-                <Icon icon="mdi:check" width="12" />
-              </span>
-            </button>
+              <button
+                type="button"
+                class="gallery-item"
+                :class="{ selected: selectedUrl === item.url }"
+                :title="item.name"
+                :disabled="deletingUrl === item.url"
+                @click="onSelect(item.url)"
+                @dblclick="selectedUrl = item.url; onUse()"
+              >
+                <img :src="item.url" :alt="item.name" />
+                <span v-if="selectedUrl === item.url" class="check">
+                  <Icon icon="mdi:check" width="12" />
+                </span>
+              </button>
+              <button
+                type="button"
+                class="delete-asset"
+                :class="{ deleting: deletingUrl === item.url }"
+                :disabled="Boolean(deletingUrl)"
+                :title="t('edit.galleryDelete')"
+                :aria-label="t('edit.galleryDelete')"
+                @click.stop="onDelete(item)"
+              >
+                <Icon
+                  :icon="deletingUrl === item.url ? 'mdi:loading' : 'mdi:trash-can-outline'"
+                  width="14"
+                  :class="{ spin: deletingUrl === item.url }"
+                />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -484,8 +525,22 @@ async function onFileChange(e: Event) {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.gallery-item {
+.gallery-card {
   position: relative;
+  min-width: 0;
+}
+
+.gallery-grid.icons .gallery-card {
+  aspect-ratio: 1;
+}
+
+.gallery-grid.wallpapers .gallery-card {
+  aspect-ratio: 16 / 10;
+}
+
+.gallery-item {
+  width: 100%;
+  height: 100%;
   border: 1px solid transparent;
   border-radius: 8px;
   padding: 0;
@@ -498,14 +553,6 @@ async function onFileChange(e: Event) {
     border-color 140ms ease;
 }
 
-.gallery-grid.icons .gallery-item {
-  aspect-ratio: 1;
-}
-
-.gallery-grid.wallpapers .gallery-item {
-  aspect-ratio: 16 / 10;
-}
-
 .gallery-item:hover {
   transform: translateY(-1px);
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
@@ -513,6 +560,11 @@ async function onFileChange(e: Event) {
 
 .gallery-item.selected {
   border: 2px solid var(--g-accent);
+}
+
+.gallery-item:disabled {
+  opacity: 0.5;
+  cursor: wait;
 }
 
 .gallery-item img {
@@ -530,7 +582,7 @@ async function onFileChange(e: Event) {
 
 .check {
   position: absolute;
-  top: 8px;
+  bottom: 7px;
   right: 8px;
   width: 20px;
   height: 20px;
@@ -539,6 +591,53 @@ async function onFileChange(e: Event) {
   color: #fff;
   display: grid;
   place-items: center;
+}
+
+.delete-asset {
+  position: absolute;
+  z-index: 2;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, #fff 12%, transparent);
+  border-radius: 7px;
+  background: rgba(12, 18, 28, 0.78);
+  color: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16);
+  opacity: 0;
+  transform: translateY(-2px);
+  cursor: pointer;
+  transition: opacity 140ms ease, transform 140ms ease, background 140ms ease;
+}
+
+.gallery-card:hover .delete-asset,
+.delete-asset:focus-visible,
+.delete-asset.deleting {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.delete-asset:hover:not(:disabled) {
+  background: rgba(220, 55, 65, 0.9);
+  color: #fff;
+}
+
+.delete-asset:disabled:not(.deleting) {
+  pointer-events: none;
+}
+
+.spin {
+  animation: gallery-spin 0.8s linear infinite;
+}
+
+@keyframes gallery-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .gallery-foot {
@@ -605,6 +704,13 @@ async function onFileChange(e: Event) {
 
   .gallery-toolbar {
     flex-wrap: wrap;
+  }
+}
+
+@media (hover: none) {
+  .delete-asset {
+    opacity: 1;
+    transform: none;
   }
 }
 </style>

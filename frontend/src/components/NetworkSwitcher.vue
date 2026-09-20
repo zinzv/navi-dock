@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { NetworkMode } from '../api/settings'
 import { useSettingsStore } from '../stores/settings'
+import { useNetworkStore } from '../stores/network'
 
 const { t } = useI18n()
 const settings = useSettingsStore()
+const network = useNetworkStore()
+const notice = ref('')
+let noticeTimer = 0
 
 const order: NetworkMode[] = ['auto', 'internal', 'external']
 
@@ -19,11 +23,33 @@ const meta = computed(() => {
   return { kind: 'auto' as const, label: t('network.auto') }
 })
 
+const statusLabel = computed(() => {
+  if (network.configured && !network.canDetect) return t('network.notConfigured')
+  if (network.status === 'checking') return t('network.checking')
+  if (network.status === 'unknown') return t('network.unknown')
+  return network.status === 'internal' ? t('network.internal') : t('network.external')
+})
+
+const title = computed(() => {
+  const mode = `${t('network.accessMode')}: ${meta.value.label}`
+  if (settings.networkMode !== 'auto') return mode
+  return `${mode} · ${t('network.current')}: ${statusLabel.value}`
+})
+
 async function cycleNetwork() {
   const idx = order.indexOf(settings.networkMode)
   const next = order[(idx + 1) % order.length]
   await settings.setNetworkMode(next)
+  if (next === 'auto' && network.configured && !network.canDetect) {
+    notice.value = t('network.probeRequired')
+    window.clearTimeout(noticeTimer)
+    noticeTimer = window.setTimeout(() => {
+      notice.value = ''
+    }, 2200)
+  }
 }
+
+onUnmounted(() => window.clearTimeout(noticeTimer))
 </script>
 
 <template>
@@ -31,8 +57,8 @@ async function cycleNetwork() {
     class="icon-btn"
     :class="{ active: settings.networkMode !== 'auto' }"
     type="button"
-    :title="`${t('network.title')}: ${meta.label}`"
-    :aria-label="`${t('network.title')}: ${meta.label}`"
+    :title="title"
+    :aria-label="title"
     @click.stop="cycleNetwork"
   >
     <!-- 自动：雷达扫描，表示按环境自动探测 -->
@@ -108,7 +134,16 @@ async function cycleNetwork() {
       />
       <path d="M4.2 12h15.6" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" />
     </svg>
+    <span
+      v-if="meta.kind === 'auto' && network.status !== 'unknown'"
+      class="net-state-dot"
+      :class="`is-${network.status}`"
+      aria-hidden="true"
+    />
   </button>
+  <Teleport to="body">
+    <div v-if="notice" class="network-mode-toast" role="status">{{ notice }}</div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -117,5 +152,50 @@ async function cycleNetwork() {
   height: 18px;
   display: block;
   overflow: visible;
+}
+
+.net-state-dot {
+  position: absolute;
+  right: 8px;
+  bottom: 7px;
+  width: 5px;
+  height: 5px;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: 50%;
+  background: #58c98b;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ds-page) 82%, transparent);
+}
+
+.net-state-dot.is-external {
+  background: #65a9e8;
+}
+
+.net-state-dot.is-checking {
+  background: #e8b765;
+  animation: net-pulse 1s ease-in-out infinite;
+}
+
+@keyframes net-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.network-mode-toast {
+  position: fixed;
+  z-index: 1500;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 32px);
+  padding: 10px 14px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  background: color-mix(in srgb, var(--ds-surface) 94%, transparent);
+  color: var(--ds-text);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(14px);
+  font-size: 13px;
+  white-space: nowrap;
 }
 </style>

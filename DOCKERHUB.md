@@ -24,6 +24,7 @@ services:
     environment:
       PUID: 1000
       PGID: 1000
+      LAN_PROBE_DOMAIN: lan.zeven.site
     volumes:
       - /volume1/docker/navi:/data
     restart: unless-stopped
@@ -65,6 +66,7 @@ Open: http://localhost:7530
 |----------|----------|-------------|
 | `PUID` | No (default `1000`) | UID of the host user that owns the bind-mounted `/data` directory |
 | `PGID` | No (default `1000`) | GID of the host user that owns the bind-mounted `/data` directory |
+| `LAN_PROBE_DOMAIN` | Required for auto mode | Explicit env-only LAN probe domain (e.g. `lan.zeven.site`); path is fixed to `/api/network/ping` |
 
 Find values on the NAS host:
 

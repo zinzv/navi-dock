@@ -15,6 +15,10 @@ export interface AppSettings {
   clear_site_icon?: boolean
 }
 
+export interface NetworkProbeConfig {
+  probe_domain: string
+}
+
 export interface NavItem {
   id: string
   name: string
@@ -49,6 +53,10 @@ export function updateSettings(body: AppSettings) {
     method: 'PUT',
     body: JSON.stringify(body),
   })
+}
+
+export function fetchNetworkConfig() {
+  return apiRequest<NetworkProbeConfig>('/api/network/config')
 }
 
 export function uploadBackground(file: File) {
@@ -157,6 +165,12 @@ export function listAssets(kind: AssetKind) {
 
 export function uploadAsset(kind: AssetKind, file: File) {
   return apiUpload<{ kind: AssetKind; name: string; url: string }>(`/api/assets/${kind}`, file)
+}
+
+export function deleteAsset(kind: AssetKind, name: string) {
+  return apiRequest<{ ok: boolean }>(`/api/assets/${kind}/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  })
 }
 
 export interface ImportResult {

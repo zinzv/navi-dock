@@ -43,7 +43,13 @@ func main() {
 	userRepo := repository.NewUserRepo(db)
 	authSvc := service.NewAuthService(userRepo, cfg.AuthSecret)
 
-	handler := api.NewHandler(settingsSvc, navSvc, authSvc, cfg.DataDir)
+	handler := api.NewHandler(
+		settingsSvc,
+		navSvc,
+		authSvc,
+		cfg.DataDir,
+		cfg.LANProbeDomain,
+	)
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()

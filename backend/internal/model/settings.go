@@ -28,7 +28,7 @@ func DefaultSettings() AppSettings {
 		SiteIcon:          "",
 		Language:          "zh",
 		Theme:             "dark",
-		NetworkMode:       "auto",
+		NetworkMode:       "internal",
 		BackgroundImage:   "",
 		BackgroundOpacity: 0.35,
 	}
