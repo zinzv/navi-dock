@@ -928,116 +928,8 @@ html[data-theme='dark'] .settings-shell {
     var(--ds-page);
 }
 
-.settings-nav {
-  height: 72px;
-  min-height: 72px;
-  padding: 0 var(--ds-gutter);
-  border-bottom: 1px solid var(--sv-border);
-  position: sticky;
-  top: 0;
-  background: color-mix(in srgb, var(--sv-bg) 88%, transparent);
-  backdrop-filter: blur(14px);
-  z-index: 10;
-}
-
-.settings-nav-inner {
-  position: relative;
-  width: min(var(--ds-container), 100%);
-  height: 100%;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.settings-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  font-size: 18px;
-  letter-spacing: 0.02em;
-  color: var(--sv-text);
-  opacity: 0.88;
-}
-
-.settings-nav-title {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  color: var(--sv-mute);
-  font-size: 14px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  pointer-events: none;
-}
-
-.settings-brand-mark {
-  width: 20px;
-  height: 20px;
-  color: var(--sv-mute);
-}
-
-.settings-brand-icon {
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
-  object-fit: contain;
-  display: block;
-}
-
-.settings-nav-actions {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 0;
-}
-
-.settings-control-capsule {
-  overflow: hidden;
-  border: 1px solid var(--sv-border);
-  border-radius: var(--ds-radius-md);
-  background: color-mix(in srgb, var(--sv-surface) 55%, transparent);
-}
-
-.settings-shell .icon-btn {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 48px;
-  height: 46px;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  color: var(--sv-text);
-  cursor: pointer;
-  transition:
-    transform 0.18s ease-out,
-    border-color 0.18s ease-out,
-    color 0.18s ease-out;
-}
-
-.settings-shell .icon-btn:hover {
-  transform: none;
-  background: var(--sv-surface-hover);
-}
-
-.settings-shell .icon-btn.active {
-  color: var(--sv-accent);
-  background: var(--sv-accent-weak);
-}
-
 .settings-shell button:active:not(:disabled) {
   transform: scale(0.98);
-}
-
-html[data-theme='dark'] .settings-nav {
-  background: rgba(11, 22, 30, 0.9);
-  border-color: var(--ds-border);
 }
 
 html[data-theme='dark'] .settings-shell .side-nav-item {
@@ -1137,17 +1029,5 @@ html[data-theme='dark'] .settings-shell .side-nav-item.active {
   :root,
   html[data-theme] {
     --ds-gutter: 16px;
-  }
-
-  .settings-nav-title {
-    display: none;
-  }
-
-  .settings-brand span {
-    display: none;
-  }
-
-  .settings-shell .icon-btn {
-    width: 42px;
   }
 }

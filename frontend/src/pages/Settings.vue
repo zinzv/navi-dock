@@ -3,7 +3,6 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
 import { useSettingsStore } from '../stores/settings'
-import { useNetworkStore } from '../stores/network'
 import AccountSettings from '../components/AccountSettings.vue'
 import GroupManager from '../components/GroupManager.vue'
 import AssetGallery from '../components/AssetGallery.vue'
@@ -28,12 +27,12 @@ onMounted(async () => {
       if (visible[0]) activeSection.value = visible[0].target.id.replace('settings-', '')
     },
     {
-      rootMargin: '-112px 0px -62% 0px',
-      threshold: [0, 0.1],
-    },
-  )
-  sections.forEach((section) => sectionObserver?.observe(section))
-})
+            rootMargin: '-24px 0px -62% 0px',
+            threshold: [0, 0.1],
+          },
+        )
+        sections.forEach((section) => sectionObserver?.observe(section))
+      })
 
 onUnmounted(() => {
   sectionObserver?.disconnect()
@@ -43,7 +42,6 @@ onUnmounted(() => {
 
 const { t } = useI18n()
 const settings = useSettingsStore()
-const network = useNetworkStore()
 const siteTitle = ref(settings.siteTitle)
 const opacityPercent = ref(Math.round(settings.backgroundOpacity * 100))
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -56,31 +54,11 @@ const activeSection = ref('account')
 const sideMenus = [
   { id: 'account', labelKey: 'settings.account' },
   { id: 'general', labelKey: 'settings.general' },
-  { id: 'network', labelKey: 'settings.networkAccess' },
   { id: 'groups', labelKey: 'settings.groups' },
   { id: 'background', labelKey: 'settings.background' },
   { id: 'backup', labelKey: 'settings.backup' },
   { id: 'about', labelKey: 'settings.about' },
 ] as const
-
-const probeConfigured = computed(() => Boolean(network.probeDomain))
-const probeDisplay = computed(() => {
-  if (!network.configured) return t('settings.networkProbeLoading')
-  if (!network.probeDomain) return t('settings.networkProbeMissing')
-  return network.probeDomain
-})
-const probeEffectiveURL = computed(() => network.probeUrl || '')
-const currentModeLabel = computed(() => {
-  if (settings.networkMode === 'internal') return t('network.internal')
-  if (settings.networkMode === 'external') return t('network.external')
-  return t('network.auto')
-})
-const detectedLabel = computed(() => {
-  if (!probeConfigured.value) return t('network.notConfigured')
-  if (network.status === 'checking') return t('network.checking')
-  if (network.status === 'unknown') return t('network.unknown')
-  return network.status === 'internal' ? t('network.internal') : t('network.external')
-})
 
 function scrollToSection(id: string) {
   activeSection.value = id
@@ -354,41 +332,6 @@ async function onImportFile(e: Event) {
       </div>
     </section>
 
-        <section id="settings-network" class="card">
-          <h2 class="card-title">{{ t('settings.networkAccess') }}</h2>
-          <p class="card-hint">{{ t('settings.networkAccessHint') }}</p>
-          <div class="rows">
-            <div class="row row-align-start">
-              <span class="label">{{ t('settings.networkHowTitle') }}</span>
-              <ul class="principle-list">
-                <li>{{ t('settings.networkHowAuto') }}</li>
-                <li>{{ t('settings.networkHowInternal') }}</li>
-                <li>{{ t('settings.networkHowExternal') }}</li>
-              </ul>
-            </div>
-            <div class="row">
-              <span class="label">{{ t('settings.networkCurrentMode') }}</span>
-              <span class="value">{{ currentModeLabel }}</span>
-            </div>
-            <div class="row">
-              <span class="label">{{ t('settings.networkDetected') }}</span>
-              <span class="value">{{ detectedLabel }}</span>
-            </div>
-            <div class="row row-align-start">
-              <span class="label">{{ t('settings.networkProbe') }}</span>
-              <div class="probe-meta">
-                <span class="value mono probe-url" :class="{ muted: !probeConfigured }">{{
-                  probeDisplay
-                }}</span>
-                <span v-if="probeEffectiveURL" class="hint mono">{{ probeEffectiveURL }}</span>
-                <span class="hint">{{ t('settings.networkProbeEnv') }}</span>
-                <code class="probe-example">LAN_PROBE_DOMAIN=lan.zeven.site</code>
-                <span class="hint">{{ t('settings.networkProbeNote') }}</span>
-              </div>
-            </div>
-          </div>
-        </section>
-
         <div id="settings-groups" class="section-anchor">
           <GroupManager @saved="flashSaved" />
         </div>
@@ -556,7 +499,7 @@ async function onImportFile(e: Event) {
 
 .settings-side {
   position: sticky;
-  top: 104px;
+  top: 24px;
   width: 180px;
 }
 
@@ -598,16 +541,15 @@ async function onImportFile(e: Event) {
 }
 
 .section-anchor {
-  scroll-margin-top: 104px;
+  scroll-margin-top: 24px;
 }
 
 #settings-account,
 #settings-general,
-#settings-network,
 #settings-background,
 #settings-backup,
 #settings-about {
-  scroll-margin-top: 104px;
+  scroll-margin-top: 24px;
 }
 
 .settings h1 {
@@ -663,53 +605,6 @@ async function onImportFile(e: Event) {
   padding: 12px 0;
   font-size: 14px;
   border-top: 1px solid color-mix(in srgb, var(--sv-border) 60%, transparent);
-}
-
-.row-align-start {
-  align-items: start;
-}
-
-.principle-list {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--sv-regular);
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.principle-list li + li {
-  margin-top: 4px;
-}
-
-.probe-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  min-width: 0;
-}
-
-.probe-url {
-  text-align: left;
-  color: var(--sv-text);
-}
-
-.probe-url.muted {
-  color: var(--sv-mute);
-}
-
-.probe-example {
-  display: inline-block;
-  max-width: 100%;
-  padding: 6px 10px;
-  border: 1px solid var(--sv-border);
-  border-radius: var(--ds-radius-sm);
-  background: color-mix(in srgb, var(--sv-surface) 70%, var(--ds-page));
-  color: var(--sv-text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.4;
-  word-break: break-all;
 }
 
 .rows .row:first-child {

@@ -98,23 +98,6 @@ export default {
     languageHint: 'UI language for home and settings',
     theme: 'Theme',
     networkMode: 'Network Mode',
-    networkAccess: 'Access Mode',
-    networkAccessHint:
-      'Use the header icon to cycle Auto / Internal / External. This page explains how it works and shows the probe config only.',
-    networkHowTitle: 'How it works',
-    networkHowAuto:
-      'Auto: the browser probes LAN_PROBE_DOMAIN at the fixed path /api/network/ping. If reachable, app internal URLs are preferred; otherwise external URLs. The mode itself stays Auto.',
-    networkHowInternal: 'Internal: always prefer each app’s internal URL (falls back to external if missing).',
-    networkHowExternal: 'External: always prefer each app’s external URL (falls back to internal if missing).',
-    networkCurrentMode: 'Current access mode',
-    networkDetected: 'Probe result',
-    networkProbe: 'LAN probe domain',
-    networkProbeLoading: 'Loading…',
-    networkProbeMissing: 'Not configured',
-    networkProbeEnv:
-      'Set the LAN_PROBE_DOMAIN environment variable explicitly and recreate the container. It cannot be edited in the UI.',
-    networkProbeNote:
-      'Domain only, e.g. lan.zeven.site. Path is fixed to /api/network/ping and the protocol follows the current page. The hostname should be LAN-only with a trusted certificate.',
     groups: 'Groups',
     groupsHint: 'Manage home group titles (e.g. APP, AI): add, rename, and reorder.',
     groupsAdd: 'Add',

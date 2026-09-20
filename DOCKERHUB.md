@@ -24,6 +24,9 @@ services:
     environment:
       PUID: 1000
       PGID: 1000
+      # 访问模式提示：自动模式需配置仅内网可达的域名
+      # 浏览器探测 https?://<域名>/api/network/ping（路径固定，协议跟随页面）
+      # 示例：lan.zeven.site
       LAN_PROBE_DOMAIN: lan.zeven.site
     volumes:
       - /volume1/docker/navi:/data
