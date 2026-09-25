@@ -205,9 +205,16 @@ export const useSettingsStore = defineStore('settings', () => {
   })
 
   if (typeof window !== 'undefined') {
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    const colorScheme = window.matchMedia('(prefers-color-scheme: dark)')
+    const onColorSchemeChange = () => {
       if (theme.value === 'system') applyTheme('system')
-    })
+    }
+    // MediaQueryList.addEventListener is unavailable in older Safari.
+    if (colorScheme.addEventListener) {
+      colorScheme.addEventListener('change', onColorSchemeChange)
+    } else {
+      colorScheme.addListener(onColorSchemeChange)
+    }
   }
 
   return {
