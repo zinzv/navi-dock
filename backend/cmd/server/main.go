@@ -53,7 +53,9 @@ func main() {
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
-	r.Use(gin.Recovery(), gin.Logger(), corsMiddleware())
+	r.Use(gin.Recovery(), gin.LoggerWithConfig(gin.LoggerConfig{
+		SkipPaths: []string{"/api/health"},
+	}), corsMiddleware())
 
 	assetsDir := filepath.Join(cfg.DataDir, "assets")
 	_ = os.MkdirAll(filepath.Join(assetsDir, "wallpapers"), 0o755)
