@@ -195,6 +195,30 @@ export async function exportNavigation() {
   return data
 }
 
+// Match the native v1 export and the legacy Sun-Panel format accepted by the server.
+export function validateNavigationImport(value: unknown): 'importInvalid' | 'importVersionUnsupported' | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return 'importInvalid'
+  const data = value as Record<string, unknown>
+  if ('icons' in data) {
+    if (!Array.isArray(data.icons) || data.icons.length === 0) return 'importInvalid'
+    const valid = data.icons.every(group => group && typeof group === 'object' &&
+      typeof group.title === 'string' && group.title.trim() &&
+      (group.children == null || (Array.isArray(group.children) && group.children.every(
+        (item: unknown) => item && typeof item === 'object' && 'title' in item &&
+          typeof item.title === 'string' && item.title.trim(),
+      ))))
+    return valid ? null : 'importInvalid'
+  }
+  if (data.version !== undefined && data.version !== 1) return 'importVersionUnsupported'
+  if (data.app !== undefined && data.app !== 'naviDock') return 'importInvalid'
+  if (!Array.isArray(data.groups) || data.groups.length === 0) return 'importInvalid'
+  const valid = data.groups.every(group => group && typeof group === 'object' &&
+    typeof group.name === 'string' && group.name.trim() && Array.isArray(group.items) &&
+    group.items.every((item: unknown) => item && typeof item === 'object' &&
+      'name' in item && typeof item.name === 'string' && item.name.trim()))
+  return valid ? null : 'importInvalid'
+}
+
 export async function importNavigation(file: File) {
   const text = await file.text()
   let body: unknown

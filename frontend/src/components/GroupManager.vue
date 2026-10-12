@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
 import {
@@ -25,6 +25,24 @@ const draftName = ref('')
 const adding = ref(false)
 const newName = ref('')
 const menuOpenId = ref<string | null>(null)
+const draggedId = ref<string | null>(null)
+const dropTarget = ref<string | null>(null)
+function closeMenu() { menuOpenId.value = null }
+onMounted(() => document.addEventListener('click', closeMenu))
+onUnmounted(() => document.removeEventListener('click', closeMenu))
+function beginDrag(event: DragEvent, id: string) {
+  if (busy.value || editingId.value || adding.value) { event.preventDefault(); return }
+  draggedId.value = id
+  if (event.dataTransfer) { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', id) }
+  closeMenu()
+}
+function endDrag() { draggedId.value = null; dropTarget.value = null }
+async function dropGroup(id: string) {
+  const from = groups.value.findIndex(g => g.id === draggedId.value)
+  const to = groups.value.findIndex(g => g.id === id)
+  endDrag()
+  if (from >= 0 && to >= 0 && from !== to) await move(from, to - from)
+}
 
 async function load() {
   loading.value = true
@@ -184,8 +202,17 @@ async function move(index: number, delta: number) {
         </div>
       </div>
 
-      <div v-for="(group, index) in groups" :key="group.id" class="row group-row">
+      <div v-for="(group, index) in groups" :key="group.id" class="row group-row"
+        :class="{ 'drop-target': dropTarget === group.id, dragging: draggedId === group.id }"
+        @dragover.prevent="dropTarget = draggedId ? group.id : null"
+        @drop.prevent="dropGroup(group.id)"
+        @dragend="endDrag"
+      >
         <div class="group-main">
+          <span class="drag-handle" :draggable="!busy && !editingId && !adding"
+            :title="t('settings.groupsDrag')" @dragstart="beginDrag($event, group.id)" @dragend="endDrag">
+            <Icon icon="mdi:drag" width="18" />
+          </span>
           <template v-if="editingId === group.id">
             <input
               v-model="draftName"
@@ -230,7 +257,7 @@ async function move(index: number, delta: number) {
             >
               <Icon icon="mdi:arrow-down" width="16" />
             </button>
-            <div class="group-menu">
+            <div class="group-menu" @click.stop @keydown.esc="closeMenu">
               <button
                 type="button"
                 class="icon-action"
@@ -244,7 +271,7 @@ async function move(index: number, delta: number) {
               <div v-if="menuOpenId === group.id" class="group-menu-popover">
                 <button type="button" @click="startEdit(group)">
                   <Icon icon="mdi:pencil-outline" width="15" />
-                  {{ t('home.edit') }}
+                  {{ t('settings.groupsRename') }}
                 </button>
                 <button type="button" class="danger" @click="removeGroup(group)">
                   <Icon icon="mdi:trash-can-outline" width="15" />
@@ -268,7 +295,7 @@ async function move(index: number, delta: number) {
   background: var(--sv-surface);
   border: 1px solid var(--sv-border);
   border-radius: 12px;
-  padding: 22px 26px;
+  padding: 20px 24px 12px;
   margin-bottom: 20px;
 }
 
@@ -359,7 +386,7 @@ async function move(index: number, delta: number) {
 
 .meta {
   font-size: 12px;
-  color: #87909c;
+  color: var(--sv-mute);
   white-space: nowrap;
 }
 
@@ -501,18 +528,44 @@ async function move(index: number, delta: number) {
   background: var(--sv-danger-soft);
 }
 
-:global(html[data-theme='dark']) .meta {
-  color: rgba(255, 255, 255, 0.52);
+.drag-handle {
+  display: grid;
+  place-items: center;
+  color: var(--sv-mute);
+  cursor: grab;
+  flex-shrink: 0;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.group-row.drop-target {
+  box-shadow: inset 0 2px var(--sv-accent);
+}
+
+.group-row.dragging {
+  opacity: .5;
+}
+
+.group-main .label {
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 640px) {
-  .group-row {
+  .group-main {
     flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .meta {
+    width: 100%;
+    padding-left: 24px;
   }
 
   .row-actions {
-    width: 100%;
-    justify-content: flex-end;
+    gap: 2px;
   }
+
 }
 </style>

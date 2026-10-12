@@ -1,51 +1,52 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Icon } from '@iconify/vue'
 import { useSettingsStore } from '../stores/settings'
 import AccountSettings from '../components/AccountSettings.vue'
 import GroupManager from '../components/GroupManager.vue'
 import AssetGallery from '../components/AssetGallery.vue'
 import type { AppLocale } from '../i18n'
-import { exportNavigation, importNavigation } from '../api/settings'
+import { exportNavigation, importNavigation, validateNavigationImport } from '../api/settings'
 import { fetchAppVersion } from '../api/health'
 
 const version = ref('…')
-let sectionObserver: IntersectionObserver | undefined
+let scrollFrame = 0
+let flashTimer: number | undefined
+
+function syncActiveSection() {
+  const sections = sideMenus.map(item => document.getElementById(`settings-${item.id}`))
+    .filter((el): el is HTMLElement => Boolean(el))
+  const offset = window.innerWidth <= 640 ? 152 : 100
+  const current = sections.filter(el => el.getBoundingClientRect().top <= offset).at(-1)
+  const atBottom = window.scrollY > 0 && window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2
+  activeSection.value = (atBottom ? sections.at(-1) : current || sections[0])?.id.replace('settings-', '') || 'account'
+}
+
+function onScroll() {
+  cancelAnimationFrame(scrollFrame)
+  scrollFrame = requestAnimationFrame(syncActiveSection)
+}
 
 onMounted(async () => {
-  version.value = await fetchAppVersion()
+  window.addEventListener('scroll', onScroll, { passive: true })
+  window.addEventListener('resize', onScroll)
   await nextTick()
-  const sections = sideMenus
-    .map((item) => document.getElementById(`settings-${item.id}`))
-    .filter((el): el is HTMLElement => Boolean(el))
-  sectionObserver = new IntersectionObserver(
-    (entries) => {
-      const visible = entries
-        .filter((entry) => entry.isIntersecting)
-        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
-      if (visible[0]) activeSection.value = visible[0].target.id.replace('settings-', '')
-    },
-    {
-            rootMargin: '-24px 0px -62% 0px',
-            threshold: [0, 0.1],
-          },
-        )
-        sections.forEach((section) => sectionObserver?.observe(section))
-      })
+  syncActiveSection()
+  version.value = await fetchAppVersion()
+})
 
 onUnmounted(() => {
-  sectionObserver?.disconnect()
-  window.clearTimeout(titleTimer)
+  window.removeEventListener('scroll', onScroll)
+  window.removeEventListener('resize', onScroll)
+  cancelAnimationFrame(scrollFrame)
   window.clearTimeout(opacityTimer)
+  window.clearTimeout(flashTimer)
 })
 
 const { t } = useI18n()
 const settings = useSettingsStore()
 const siteTitle = ref(settings.siteTitle)
 const opacityPercent = ref(Math.round(settings.backgroundOpacity * 100))
-const fileInput = ref<HTMLInputElement | null>(null)
-const iconInput = ref<HTMLInputElement | null>(null)
 const importInput = ref<HTMLInputElement | null>(null)
 const iconGalleryOpen = ref(false)
 const bgGalleryOpen = ref(false)
@@ -63,15 +64,14 @@ const sideMenus = [
 function scrollToSection(id: string) {
   activeSection.value = id
   const el = document.getElementById(`settings-${id}`)
-  el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  el?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })
 }
 const savedFlash = ref(false)
 const ioBusy = ref(false)
+const groupsRevision = ref(0)
 const ioStatus = ref('')
 const ioError = ref('')
-let titleTimer: number | undefined
 let opacityTimer: number | undefined
-let skipFlash = true
 
 watch(
   () => settings.siteTitle,
@@ -87,17 +87,6 @@ watch(
   },
 )
 
-watch(
-  () => [settings.theme, settings.networkMode, settings.backgroundImage, settings.siteIcon],
-  () => {
-    if (skipFlash) {
-      skipFlash = false
-      return
-    }
-    flashSaved()
-  },
-)
-
 const previewStyle = computed(() => {
   if (!settings.backgroundImage) return undefined
   return {
@@ -108,7 +97,8 @@ const previewStyle = computed(() => {
 
 function flashSaved() {
   savedFlash.value = true
-  window.setTimeout(() => {
+  window.clearTimeout(flashTimer)
+  flashTimer = window.setTimeout(() => {
     savedFlash.value = false
   }, 1200)
 }
@@ -119,15 +109,18 @@ async function setLanguage(lang: AppLocale) {
   flashSaved()
 }
 
-function queueSaveTitle() {
-  window.clearTimeout(titleTimer)
-  titleTimer = window.setTimeout(async () => {
-    const next = siteTitle.value.trim() || t('app.name')
-    siteTitle.value = next
-    if (next === settings.siteTitle) return
+const titleError = ref('')
+async function saveTitle() {
+  const next = siteTitle.value.trim() || t('app.name')
+  siteTitle.value = next
+  if (next === settings.siteTitle) return
+  titleError.value = ''
+  try {
     await settings.save({ site_title: next })
     flashSaved()
-  }, 400)
+  } catch (error) {
+    titleError.value = error instanceof Error ? error.message : t('settings.saveFailed')
+  }
 }
 
 function onOpacityInput() {
@@ -138,26 +131,8 @@ function onOpacityInput() {
   }, 200)
 }
 
-async function onPickFile(e: Event) {
-  const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  await settings.uploadHomeBackground(file)
-  input.value = ''
-  flashSaved()
-}
-
 async function onRemoveBackground() {
   await settings.removeHomeBackground()
-  flashSaved()
-}
-
-async function onPickIcon(e: Event) {
-  const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  await settings.uploadBrandIcon(file)
-  input.value = ''
   flashSaved()
 }
 
@@ -201,19 +176,23 @@ async function onImportFile(e: Event) {
   const file = input.files?.[0]
   input.value = ''
   if (!file || ioBusy.value) return
-  if (!window.confirm(t('settings.importConfirm'))) return
   ioBusy.value = true
   ioError.value = ''
   ioStatus.value = ''
   try {
+    const payload: unknown = JSON.parse(await file.text())
+    const validation = validateNavigationImport(payload)
+    if (validation) throw new Error(t(`settings.${validation}`))
+    if (!window.confirm(t('settings.importConfirm'))) return
     const result = await importNavigation(file)
+    groupsRevision.value++
     ioStatus.value = t('settings.importDone', {
       groups: result.group_count,
       items: result.item_count,
     })
     flashSaved()
   } catch (err) {
-    ioError.value = err instanceof Error ? err.message : t('settings.importFailed')
+    ioError.value = err instanceof SyntaxError ? t('settings.importInvalid') : err instanceof Error ? err.message : t('settings.importFailed')
   } finally {
     ioBusy.value = false
   }
@@ -224,7 +203,7 @@ async function onImportFile(e: Event) {
   <div class="settings">
     <div class="settings-top">
       <h1>{{ t('settings.title') }}</h1>
-      <span v-if="savedFlash" class="saved-tip">{{ t('settings.saved') }}</span>
+      <span class="saved-tip" role="status" aria-live="polite"><template v-if="savedFlash">{{ t('settings.saved') }}</template></span>
     </div>
 
     <div class="settings-body">
@@ -236,6 +215,7 @@ async function onImportFile(e: Event) {
             type="button"
             class="side-nav-item"
             :class="{ active: activeSection === item.id }"
+            :aria-current="activeSection === item.id ? 'location' : undefined"
             @click="scrollToSection(item.id)"
           >
             {{ t(item.labelKey) }}
@@ -250,198 +230,166 @@ async function onImportFile(e: Event) {
 
         <section id="settings-general" class="card">
           <h2 class="card-title">{{ t('settings.general') }}</h2>
+          <p v-if="titleError" class="io-error" role="alert">{{ titleError }}</p>
           <div class="rows">
-        <div class="row">
-          <span class="label">{{ t('settings.language') }}</span>
-          <div class="segmented" role="group" :aria-label="t('settings.language')">
-            <button
-              type="button"
-              :class="{ active: settings.language === 'zh' }"
-              @click="setLanguage('zh')"
-            >
-              {{ t('settings.langZh') }}
-            </button>
-            <button
-              type="button"
-              :class="{ active: settings.language === 'en' }"
-              @click="setLanguage('en')"
-            >
-              English
-            </button>
-          </div>
-        </div>
-        <div class="row">
-          <span class="label">{{ t('settings.siteTitle') }}</span>
-          <input
-            v-model="siteTitle"
-            class="row-input site-title-input"
-            type="text"
-            maxlength="64"
-            :title="t('settings.siteTitleHint')"
-            @input="queueSaveTitle"
-            @blur="queueSaveTitle"
-          />
-        </div>
-        <div class="row">
-          <span class="label">{{ t('settings.siteIcon') }}</span>
-          <div class="bg-actions">
-            <img
-              v-if="settings.siteIcon"
-              class="site-icon-preview"
-              :src="settings.siteIcon"
-              alt=""
-            />
-            <input
-              ref="iconInput"
-              class="hidden-file"
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/x-icon,.ico"
-              @change="onPickIcon"
-            />
-            <div class="action-btns">
-              <button
-                type="button"
-                class="secondary-btn"
-                :disabled="settings.saving"
-                @click="iconGalleryOpen = true"
-              >
-                <Icon icon="mdi:image-multiple-outline" width="15" />
-                {{ t('settings.siteIconGallery') }}
-              </button>
-              <button
-                type="button"
-                class="primary-btn"
-                :disabled="settings.saving"
-                @click="iconInput?.click()"
-              >
-                <Icon icon="mdi:upload" width="15" />
-                {{ t('settings.siteIconUpload') }}
-              </button>
-              <button
-                v-if="settings.siteIcon"
-                type="button"
-                class="danger-ghost-btn"
-                :disabled="settings.saving"
-                @click="onRemoveIcon"
-              >
-                {{ t('settings.siteIconRemove') }}
-              </button>
+            <div class="row">
+              <span class="label">{{ t('settings.language') }}</span>
+              <div class="segmented" role="group" :aria-label="t('settings.language')">
+                <button
+                  type="button"
+                  :class="{ active: settings.language === 'zh' }"
+                  @click="setLanguage('zh')"
+                >
+                  {{ t('settings.langZh') }}
+                </button>
+                <button
+                  type="button"
+                  :class="{ active: settings.language === 'en' }"
+                  @click="setLanguage('en')"
+                >
+                  English
+                </button>
+              </div>
+            </div>
+            <div class="row">
+              <span class="label">{{ t('settings.siteTitle') }}</span>
+              <input
+                v-model="siteTitle"
+                class="row-input site-title-input"
+                type="text"
+                maxlength="64"
+                :title="t('settings.siteTitleHint')"
+                :aria-label="t('settings.siteTitle')"
+                @blur="saveTitle"
+                @keydown.enter="saveTitle"
+              />
+            </div>
+            <div class="row">
+              <span class="label">{{ t('settings.siteIcon') }}</span>
+              <div class="bg-actions">
+                <img
+                  v-if="settings.siteIcon"
+                  class="site-icon-preview"
+                  :src="settings.siteIcon"
+                  alt=""
+                />
+                <div class="action-btns">
+                  <button
+                    type="button"
+                    class="secondary-btn"
+                    :disabled="settings.saving"
+                    @click="iconGalleryOpen = true"
+                  >
+                    {{ t('settings.changeImage') }}
+                  </button>
+                  <button
+                    v-if="settings.siteIcon"
+                    type="button"
+                    class="danger-ghost-btn"
+                    :disabled="settings.saving"
+                    @click="onRemoveIcon"
+                  >
+                    {{ t('settings.siteIconRemove') }}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-    </section>
+        </section>
 
         <div id="settings-groups" class="section-anchor">
-          <GroupManager @saved="flashSaved" />
+          <GroupManager :key="groupsRevision" @saved="flashSaved" />
         </div>
 
         <section id="settings-background" class="card">
           <h2 class="card-title">{{ t('settings.background') }}</h2>
 
-      <div v-if="previewStyle" class="bg-preview-wrap">
-        <div class="bg-preview-base" />
-        <div class="bg-preview-image" :style="previewStyle" />
-      </div>
+          <div class="rows">
+            <div class="row">
+              <span class="label">{{ t('settings.backgroundImage') }}</span>
+              <div class="bg-actions">
+                <div v-if="previewStyle" class="bg-preview-wrap" aria-hidden="true">
+                  <div class="bg-preview-image" :style="previewStyle" />
+                </div>
+                <div class="action-btns">
+                  <button
+                    type="button"
+                    class="secondary-btn"
+                    :disabled="settings.saving"
+                    @click="bgGalleryOpen = true"
+                  >
+                    {{ t('settings.changeImage') }}
+                  </button>
+                  <button
+                    v-if="settings.backgroundImage"
+                    type="button"
+                    class="danger-ghost-btn"
+                    :disabled="settings.saving"
+                    @click="onRemoveBackground"
+                  >
+                    {{ t('settings.backgroundRemove') }}
+                  </button>
+                </div>
+              </div>
+            </div>
 
-      <div class="rows">
-        <div class="row">
-          <span class="label">{{ t('settings.backgroundImage') }}</span>
-          <div class="bg-actions">
-            <input
-              ref="fileInput"
-              class="hidden-file"
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              @change="onPickFile"
-            />
-            <div class="action-btns">
-              <button
-                type="button"
-                class="secondary-btn"
-                :disabled="settings.saving"
-                @click="bgGalleryOpen = true"
-              >
-                <Icon icon="mdi:image-multiple-outline" width="15" />
-                {{ t('settings.backgroundGallery') }}
-              </button>
-              <button
-                type="button"
-                class="primary-btn"
-                :disabled="settings.saving"
-                @click="fileInput?.click()"
-              >
-                <Icon icon="mdi:upload" width="15" />
-                {{ t('settings.backgroundUpload') }}
-              </button>
-              <button
-                v-if="settings.backgroundImage"
-                type="button"
-                class="danger-ghost-btn"
-                :disabled="settings.saving"
-                @click="onRemoveBackground"
-              >
-                {{ t('settings.backgroundRemove') }}
-              </button>
+            <div class="row">
+              <span class="label">{{ t('settings.backgroundOpacity') }}</span>
+              <div class="range-control">
+                <input
+                  v-model.number="opacityPercent"
+                  class="opacity-range"
+                 :aria-label="t('settings.backgroundOpacity')"
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  :style="{ '--range-progress': `${opacityPercent}%` }"
+                  @input="onOpacityInput"
+                />
+                <span class="value mono">{{ opacityPercent }}%</span>
+              </div>
             </div>
           </div>
-        </div>
-
-        <div class="row">
-          <span class="label">{{ t('settings.backgroundOpacity') }}</span>
-          <div class="range-control">
-            <input
-              v-model.number="opacityPercent"
-              class="opacity-range"
-              type="range"
-              min="0"
-              max="100"
-              step="1"
-              :style="{ '--range-progress': `${opacityPercent}%` }"
-              @input="onOpacityInput"
-            />
-            <span class="value mono">{{ opacityPercent }}%</span>
-          </div>
-        </div>
-      </div>
-    </section>
+        </section>
 
         <section id="settings-backup" class="card">
           <h2 class="card-title">{{ t('settings.backup') }}</h2>
-      <div class="rows">
-        <div class="row migration-row">
-          <div class="setting-copy">
-            <span class="label">{{ t('settings.export') }}</span>
-            <span class="hint">{{ t('settings.exportHint') }}</span>
+          <div class="rows">
+            <div class="row migration-row">
+              <div class="setting-copy">
+                <span class="label">{{ t('settings.export') }}</span>
+                <span class="hint">{{ t('settings.exportHint') }}</span>
+              </div>
+              <div>
+                <button type="button" class="secondary-btn" :disabled="ioBusy" @click="onExport">
+                  {{ t('settings.exportAction') }}
+                </button>
+              </div>
+            </div>
+            <div class="row migration-row">
+              <div class="setting-copy">
+                <span class="label">{{ t('settings.import') }}</span>
+                <span class="hint">{{ t('settings.importHint') }}</span>
+              </div>
+              <div>
+                <input
+                  ref="importInput"
+                  class="hidden-file"
+                  type="file"
+                  accept="application/json,.json"
+                  @change="onImportFile"
+                />
+                <button type="button" class="secondary-btn restore-btn" :disabled="ioBusy" @click="triggerImport">
+                  {{ t('settings.importAction') }}
+                </button>
+              </div>
+            </div>
+            <p v-if="ioStatus" class="io-status">{{ ioStatus }}</p>
+            <p v-if="ioError" class="io-error">{{ ioError }}</p>
           </div>
-          <div>
-            <button type="button" class="secondary-btn" :disabled="ioBusy" @click="onExport">
-              {{ t('settings.exportAction') }}
-            </button>
-          </div>
-        </div>
-        <div class="row migration-row">
-          <div class="setting-copy">
-            <span class="label">{{ t('settings.import') }}</span>
-            <span class="hint">{{ t('settings.importHint') }}</span>
-          </div>
-          <div>
-            <input
-              ref="importInput"
-              class="hidden-file"
-              type="file"
-              accept="application/json,.json"
-              @change="onImportFile"
-            />
-            <button type="button" class="secondary-btn restore-btn" :disabled="ioBusy" @click="triggerImport">
-              {{ t('settings.importAction') }}
-            </button>
-          </div>
-        </div>
-        <p v-if="ioStatus" class="io-status">{{ ioStatus }}</p>
-        <p v-if="ioError" class="io-error">{{ ioError }}</p>
-      </div>
-    </section>
+        </section>
+
 
         <section id="settings-about" class="card">
           <h2 class="card-title">{{ t('settings.about') }}</h2>
@@ -451,10 +399,7 @@ async function onImportFile(e: Event) {
                 <span class="about-product">{{ t('app.name') }}</span>
                 <span class="hint">{{ t('app.tagline') }}</span>
               </div>
-            </div>
-            <div class="row">
-              <span class="label">{{ t('settings.version') }}</span>
-              <span class="value mono about-version">v{{ version }}</span>
+              <span class="value mono about-version" :aria-label="t('settings.version')">v{{ version }}</span>
             </div>
           </div>
         </section>
@@ -478,38 +423,47 @@ async function onImportFile(e: Event) {
 
 <style scoped>
 .settings {
-  width: min(var(--ds-container), calc(100% - (var(--ds-gutter) * 2)));
-  padding: 30px 0 72px;
+  width: min(1440px, calc(100% - 64px));
+  padding: 28px 0 64px;
   margin: 0 auto;
 }
 
 .settings-top {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 32px;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.settings h1 {
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.saved-tip {
+  font-size: 12px;
+  color: var(--sv-accent-text);
+  min-height: 18px;
 }
 
 .settings-body {
   display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
-  align-items: flex-start;
+  grid-template-columns: 200px minmax(0, 960px);
   gap: 32px;
+  align-items: start;
 }
 
 .settings-side {
   position: sticky;
-  top: 24px;
-  width: 180px;
+  top: 88px;
 }
 
 .side-nav {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 0;
-  border: 0;
-  background: transparent;
 }
 
 .side-nav-item {
@@ -519,76 +473,48 @@ async function onImportFile(e: Event) {
   text-align: left;
   min-height: 40px;
   padding: 8px 14px;
-  border-radius: var(--ds-radius-sm);
+  border-radius: 8px;
   font-size: 14px;
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .side-nav-item:hover {
+  background: var(--sv-surface-hover);
   color: var(--sv-text);
-  background: color-mix(in srgb, var(--sv-accent) 10%, transparent);
 }
 
 .side-nav-item.active {
-  color: var(--sv-accent);
+  color: var(--sv-accent-text);
   background: var(--sv-accent-weak);
 }
 
 .settings-main {
-  flex: 1;
   min-width: 0;
 }
 
-.section-anchor {
-  scroll-margin-top: 24px;
+.section-anchor, .card {
+  scroll-margin-top: 88px;
 }
 
-#settings-account,
-#settings-general,
-#settings-background,
-#settings-backup,
-#settings-about {
-  scroll-margin-top: 24px;
-}
-
-.settings h1 {
-  font-size: 30px;
-  line-height: 40px;
-  font-weight: 650;
-  margin: 0;
-}
-
-.saved-tip {
-  color: var(--sv-accent);
-  font-size: 13px;
-}
-
-.card {
+.card, .settings-main :deep(.card) {
   background: var(--sv-surface);
   border: 1px solid var(--sv-border);
-  border-radius: var(--ds-radius-lg);
-  padding: 24px 28px;
-  margin-bottom: 16px;
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.018),
-    0 8px 30px rgba(30, 70, 100, 0.024);
-  backdrop-filter: blur(14px);
+  border-radius: 12px;
+  padding: 20px 24px 12px;
+  margin-bottom: 20px;
+  box-shadow: none;
 }
 
-.card-title {
-  margin: 0 0 12px;
-  font-size: 20px;
-  line-height: 28px;
-  font-weight: 650;
+.card-title, .settings-main :deep(.card-title) {
+  margin: 0 0 8px;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
   color: var(--sv-text);
 }
 
-.card-hint {
-  margin: 0 0 12px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--sv-mute);
+.settings-main :deep(.card-header .card-title) {
+  margin: 0;
 }
 
 .rows {
@@ -598,51 +524,54 @@ async function onImportFile(e: Event) {
 
 .row {
   display: grid;
-  grid-template-columns: 160px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
+  gap: 20px;
   align-items: center;
-  gap: 16px;
-  min-height: 64px;
-  padding: 12px 0;
   font-size: 14px;
-  border-top: 1px solid color-mix(in srgb, var(--sv-border) 60%, transparent);
 }
 
-.rows .row:first-child {
-  border-top: none;
+.row, .settings-main :deep(.row) {
+  box-sizing: border-box;
+  min-height: 60px;
+  padding: 10px 0;
+  border-top: 1px solid var(--sv-border);
 }
 
-.row-stack {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 10px;
+.rows > .row:first-child, .settings-main :deep(.rows > .row:first-child) {
+  border-top: 0;
 }
 
-.row-inline,
-.row-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+.settings-main :deep(.group-row) {
+  min-height: 56px;
+  padding: 8px 0;
+}
+
+.row > :last-child {
+  justify-self: end;
 }
 
 .label {
-  flex-shrink: 0;
-  color: var(--sv-regular);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
+  color: var(--sv-text);
 }
 
 .hint {
   font-size: 12px;
+  line-height: 1.5;
   color: var(--sv-mute);
 }
 
+.setting-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
 .value {
-  text-align: right;
-  color: var(--sv-mute);
   font-size: 13px;
-  line-height: 1.4;
-  word-break: break-all;
+  color: var(--sv-mute);
 }
 
 .mono {
@@ -651,8 +580,8 @@ async function onImportFile(e: Event) {
 
 .segmented {
   display: inline-flex;
-  width: 180px;
-  box-sizing: border-box;
+  width: 240px;
+  height: 36px;
   border: 1px solid var(--sv-border);
   border-radius: 8px;
   overflow: hidden;
@@ -660,13 +589,11 @@ async function onImportFile(e: Event) {
 
 .segmented button {
   flex: 1;
+  border: 0;
   background: transparent;
-  border: none;
   color: var(--sv-mute);
-  padding: 6px 10px;
   font-size: 13px;
   cursor: pointer;
-  transition: background-color 0.18s ease-out, color 0.18s ease-out;
 }
 
 .segmented button + button {
@@ -674,60 +601,20 @@ async function onImportFile(e: Event) {
 }
 
 .segmented button.active {
-  background: rgba(99, 102, 241, 0.12);
-  color: #5b5fef;
+  background: var(--sv-accent-weak);
+  color: var(--sv-accent-text);
 }
 
-.primary-btn {
-  background: var(--sv-accent);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  height: 38px;
-  padding: 0 15px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: opacity 0.18s ease-out;
+.secondary-btn, .danger-ghost-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-}
-
-.primary-btn:hover:not(:disabled) {
-  background: var(--sv-accent-hover);
-}
-
-.primary-btn:disabled,
-.link-btn:disabled {
-  opacity: 0.38;
-  cursor: not-allowed;
-}
-
-.link-btn {
-  background: none;
-  border: 1px solid var(--sv-border);
-  color: var(--sv-text);
-  border-radius: 8px;
-  padding: 4px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background-color 0.18s ease-out;
-}
-
-.link-btn:hover:not(:disabled) {
-  background: var(--sv-border);
-}
-
-.secondary-btn,
-.danger-ghost-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 38px;
+  justify-content: center;
+  height: 36px;
+  min-width: 64px;
   padding: 0 12px;
   border: 1px solid var(--sv-border);
   border-radius: 8px;
-  background: transparent;
+  background: var(--sv-surface);
   color: var(--sv-text);
   font-size: 13px;
   cursor: pointer;
@@ -735,162 +622,125 @@ async function onImportFile(e: Event) {
 
 .secondary-btn:hover:not(:disabled) {
   background: var(--sv-surface-hover);
-  border-color: color-mix(in srgb, var(--sv-accent) 30%, var(--sv-border));
 }
 
 .danger-ghost-btn {
+  min-width: auto;
   border-color: transparent;
   color: var(--sv-mute);
 }
 
-.danger-ghost-btn:hover:not(:disabled),
 .danger-ghost-btn:hover:not(:disabled) {
   color: var(--sv-danger);
-  border-color: transparent;
   background: var(--sv-danger-soft);
 }
 
-.secondary-btn:disabled,
-.danger-ghost-btn:disabled {
-  opacity: 0.4;
+button:disabled {
+  opacity: .45;
   cursor: not-allowed;
 }
 
 .row-input {
-  height: 40px;
-  width: 100%;
-  border-radius: 8px;
+  height: 36px;
+  width: 240px;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0 12px;
   border: 1px solid var(--sv-border);
+  border-radius: 8px;
   background: var(--sv-input-bg);
   color: var(--sv-text);
-  padding: 0 12px;
-  outline: none;
   font-size: 14px;
 }
 
-.site-title-input {
-  width: 220px;
-  max-width: 100%;
-  box-sizing: border-box;
+.row-input:focus {
+  outline: 2px solid var(--sv-accent);
+  outline-offset: 2px;
 }
 
-.action-btns {
-  display: inline-flex;
+.bg-actions, .action-btns {
+  display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: nowrap;
-}
-
-.action-btns .primary-btn {
-  margin: 0;
 }
 
 .site-icon-preview {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--sv-border);
   border-radius: 6px;
   object-fit: contain;
   background: var(--sv-bg);
-  border: 1px solid var(--sv-border);
-}
-
-.row-input:focus {
-  border-color: color-mix(in srgb, var(--sv-accent) 50%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sv-accent) 8%, transparent);
-}
-
-.row-input::placeholder {
-  color: color-mix(in srgb, var(--sv-text) 43%, transparent);
 }
 
 .bg-preview-wrap {
+  width: 64px;
+  height: 36px;
   position: relative;
-  height: 112px;
-  margin: 4px 0 18px;
-  border-radius: 10px;
   overflow: hidden;
+  border-radius: 6px;
   border: 1px solid var(--sv-border);
-}
-
-.bg-preview-base {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, #16324a 0%, #1f4a3d 100%);
-  filter: saturate(0.82);
+  background: var(--sv-bg);
 }
 
 .bg-preview-image {
   position: absolute;
   inset: 0;
-  background-position: center;
   background-size: cover;
-  background-repeat: no-repeat;
-}
-
-.bg-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
+  background-position: center;
 }
 
 .hidden-file {
   display: none;
 }
 
-.opacity-range {
-  width: 100%;
-  appearance: none;
-  -webkit-appearance: none;
-  background: transparent;
-  height: 16px;
-  margin: 0;
-}
-
 .range-control {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 48px;
+  grid-template-columns: minmax(0, 1fr) 44px;
   align-items: center;
   gap: 12px;
-  width: min(480px, 100%);
-  justify-self: end;
+  width: 300px;
+  max-width: 100%;
 }
 
 .range-control .value {
   text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.opacity-range {
+  width: 100%;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  height: 24px;
+  cursor: pointer;
 }
 
 .opacity-range::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 999px;
-  background: linear-gradient(
-    to right,
-    var(--sv-accent) 0 var(--range-progress),
-    rgba(20, 30, 40, 0.12) var(--range-progress) 100%
-  );
+  background: linear-gradient(to right, var(--sv-accent) 0 var(--range-progress), var(--sv-border) var(--range-progress) 100%);
 }
 
 .opacity-range::-webkit-slider-thumb {
-  width: 14px;
-  height: 14px;
-  margin-top: -5px;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
   border: 2px solid var(--sv-surface);
   border-radius: 50%;
   background: var(--sv-accent);
-  -webkit-appearance: none;
-  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.18);
-  cursor: pointer;
 }
 
 .opacity-range::-moz-range-track {
   height: 4px;
   border-radius: 999px;
-  background: rgba(20, 30, 40, 0.12);
+  background: var(--sv-border);
 }
 
 .opacity-range::-moz-range-progress {
   height: 4px;
-  border-radius: 999px;
   background: var(--sv-accent);
 }
 
@@ -900,18 +750,6 @@ async function onImportFile(e: Event) {
   border: 2px solid var(--sv-surface);
   border-radius: 50%;
   background: var(--sv-accent);
-  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.18);
-  cursor: pointer;
-}
-
-.setting-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.migration-row > :last-child {
-  justify-self: end;
 }
 
 .about-product {
@@ -920,176 +758,106 @@ async function onImportFile(e: Event) {
 }
 
 .about-version {
-  font-size: 14px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--sv-bg);
+  white-space: nowrap;
 }
 
-.row > :last-child:not(:only-child),
-.segmented,
-.bg-actions {
-  justify-self: end;
-}
-
-.row > .setting-copy:only-child {
-  grid-column: 1 / -1;
-}
-
-.settings-main :deep(.card) {
-  background: var(--sv-surface);
-  border: 1px solid var(--sv-border);
-  border-radius: var(--ds-radius-lg);
-  padding: 24px 28px;
-  margin-bottom: 16px;
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.018),
-    0 8px 30px rgba(30, 70, 100, 0.024);
-  backdrop-filter: blur(14px);
-}
-
-.settings-main :deep(.card-title) {
-  font-size: 20px;
-  line-height: 28px;
-  font-weight: 650;
-}
-
-.settings-main :deep(.row) {
-  min-height: 64px;
-  padding-top: 12px;
-  padding-bottom: 12px;
-  border-color: color-mix(in srgb, var(--sv-border) 60%, transparent);
-}
-
-.settings-main :deep(.rows) {
-  max-width: 900px;
-}
-
-.settings-main :deep(.primary-btn),
-.settings-main :deep(.secondary-btn),
-.settings-main :deep(.logout-btn) {
-  min-height: 38px;
-  border-radius: var(--ds-radius-sm);
-}
-
-.settings-main :deep(.icon-action) {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--ds-radius-sm);
-}
-
-:global(html[data-theme='dark']) .side-nav-item.active {
-  color: #8e92ff;
-  background: var(--sv-accent-weak);
-}
-
-:global(html[data-theme='dark']) .side-nav-item {
-  color: var(--sv-mute);
-}
-
-:global(html[data-theme='dark']) .row-input {
-  background: var(--sv-input-bg);
-  border-color: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.9);
-}
-
-:global(html[data-theme='dark']) .segmented button.active {
-  color: #8c91ff;
-  background: rgba(95, 102, 232, 0.15);
-}
-
-:global(html[data-theme='dark']) .segmented button:not(.active) {
-  color: var(--sv-mute);
-}
-
-:global(html[data-theme='dark']) .opacity-range::-webkit-slider-runnable-track {
-  background: linear-gradient(
-    to right,
-    var(--sv-accent) 0 var(--range-progress),
-    rgba(255, 255, 255, 0.14) var(--range-progress) 100%
-  );
-}
-
-:global(html[data-theme='dark']) .opacity-range::-moz-range-track {
-  background: rgba(255, 255, 255, 0.14);
-}
-
-.io-status {
-  margin: 0 0 12px;
-  font-size: 13px;
+.io-status, .io-error {
+  margin: 4px 0 12px;
+  font-size: 12px;
   color: var(--sv-mute);
 }
 
 .io-error {
-  margin: 0 0 12px;
-  font-size: 13px;
-  color: #ef4444;
+  color: var(--sv-danger);
 }
 
-@media (max-width: 640px) {
-  .settings {
-    width: calc(100% - 32px);
-    padding: 20px 0 40px;
-  }
-
-  .settings-body {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-
-  .settings-side {
-    position: static;
-    width: 100%;
-    flex-basis: auto;
-  }
-
-  .side-nav {
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
-
-  .side-nav-item {
-    flex: 1 1 auto;
-    text-align: center;
-  }
-
-  .row:not(.row-stack) {
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
-
-  .value {
-    text-align: left;
-    width: 100%;
-  }
-
-  .segmented {
-    width: 100%;
-  }
-
-  .segmented button {
-    flex: 1;
-  }
+.settings-main :deep(.primary-btn), .settings-main :deep(.secondary-btn), .settings-main :deep(.logout-btn), .settings-main :deep(.link-btn) {
+  height: 36px;
+  border-radius: 8px;
 }
 
-@media (min-width: 641px) and (max-width: 900px) {
+@media (max-width: 1000px) {
   .settings {
     width: calc(100% - 40px);
   }
 
   .settings-body {
     grid-template-columns: 144px minmax(0, 1fr);
-    gap: 20px;
+    gap: 24px;
+  }
+
+  .row {
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 240px);
+  }
+
+}
+
+@media (max-width: 640px) {
+  .settings {
+    width: calc(100% - 32px);
+    padding-top: 20px;
+  }
+
+  .settings-top {
+    margin-bottom: 16px;
+  }
+
+  .settings-body {
+    grid-template-columns: 1fr;
+    gap: 16px;
   }
 
   .settings-side {
-    width: 144px;
+    top: 64px;
+    z-index: 30;
+    background: var(--sv-bg);
+    padding: 8px 0;
   }
 
-  .row:not(.row-stack) {
-    grid-template-columns: 132px minmax(0, 1fr);
+  .side-nav {
+    flex-direction: row;
+    overflow-x: auto;
   }
 
-  .card,
-  .settings-main :deep(.card) {
-    padding: 20px 22px;
+  .side-nav-item {
+    flex-shrink: 0;
+    text-align: center;
+    padding: 8px 12px;
   }
+
+  .section-anchor, .card {
+    scroll-margin-top: 136px;
+  }
+
+  .card, .settings-main :deep(.card) {
+    padding: 16px 16px 8px;
+    margin-bottom: 16px;
+  }
+
+  .row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .row > :last-child {
+    justify-self: start;
+  }
+
+  .row-input, .segmented, .range-control {
+    width: 100%;
+  }
+
+  .bg-actions {
+    flex-wrap: wrap;
+  }
+
+  .migration-row, #settings-about .row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+  }
+
 }
 </style>

@@ -272,12 +272,16 @@ function roleLabel(role: string) {
       <div class="rows">
         <div class="row current-row">
           <div class="current-line">
-            <span class="value">{{ auth.user?.username }}</span>
-            <span class="role-tag">{{ roleLabel(auth.user?.role || '') }}</span>
+            <span class="account-avatar" aria-hidden="true">{{ auth.user?.username?.slice(0, 1).toUpperCase() }}</span>
+            <div class="account-copy">
+              <div class="account-identity"><span class="value account-name">{{ auth.user?.username }}</span>
+                <span class="role-tag">{{ roleLabel(auth.user?.role || '') }}</span></div>
+              <span class="account-caption">{{ t('settings.accountCurrent') }}</span>
+            </div>
           </div>
           <div class="toolbar-actions">
             <button type="button" class="secondary-btn" :disabled="busy || anyModalOpen" @click="openReset">
-              {{ t('settings.accountResetPassword') }}
+              {{ t('settings.accountChangePassword') }}
             </button>
             <button type="button" class="logout-btn" :disabled="busy" @click="onLogout">
               {{ t('settings.accountLogout') }}
@@ -294,12 +298,12 @@ function roleLabel(role: string) {
         role="dialog"
         aria-modal="true"
         :data-theme="settings.resolvedTheme"
-        :aria-label="t('settings.accountResetPassword')"
+        :aria-label="t('settings.accountChangePassword')"
       >
         <div class="account-backdrop" @click="closeReset" />
         <div class="account-modal">
           <div class="account-head">
-            <h2>{{ t('settings.accountResetPassword') }}</h2>
+            <h2>{{ t('settings.accountChangePassword') }}</h2>
             <button type="button" class="account-close" :disabled="busy" @click="closeReset">
               <Icon icon="mdi:close" width="18" />
             </button>
@@ -346,7 +350,7 @@ function roleLabel(role: string) {
               :disabled="busy || !oldPassword || !newPassword"
               @click="onResetPassword"
             >
-              {{ t('settings.accountResetPassword') }}
+              {{ t('settings.accountChangePassword') }}
             </button>
           </div>
         </div>
@@ -605,7 +609,7 @@ function roleLabel(role: string) {
   gap: 18px;
   min-height: 52px;
   padding: 8px 0 0;
-  max-width: 820px;
+  width: 100%;
 }
 
 .current-line {
@@ -715,8 +719,8 @@ function roleLabel(role: string) {
 }
 
 .logout-btn:hover:not(:disabled) {
-  color: var(--sv-danger);
-  background: var(--sv-danger-soft);
+  color: var(--sv-text);
+  background: var(--sv-surface-hover);
 }
 
 .secondary-btn:disabled,
@@ -812,7 +816,6 @@ function roleLabel(role: string) {
   --modal-shadow: 0 24px 64px rgba(15, 23, 42, 0.22);
   --modal-disabled-bg: #e7e8ec;
   --modal-disabled-text: #a2a7b2;
-
   position: fixed;
   inset: 0;
   z-index: 1200;
@@ -1179,6 +1182,7 @@ function roleLabel(role: string) {
   .form-block {
     padding-top: 16px;
   }
+
 }
 
 :deep(.field-input) {
@@ -1249,5 +1253,67 @@ function roleLabel(role: string) {
   font-size: 12px;
   color: color-mix(in srgb, var(--modal-accent) 80%, var(--modal-text));
   background: color-mix(in srgb, var(--modal-accent) 8%, transparent);
+}
+
+.account-avatar {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--sv-accent-weak);
+  color: var(--sv-accent-text);
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.account-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.account-identity {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.account-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.account-caption {
+  font-size: 12px;
+  color: var(--sv-mute);
+}
+
+@media (max-width: 760px) {
+  .row.current-row {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .toolbar-actions {
+    margin-left: auto;
+  }
+
+}
+
+@media (max-width: 640px) {
+  .current-line {
+    flex-basis: 100%;
+  }
+
+  .toolbar-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
 }
 </style>
