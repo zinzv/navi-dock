@@ -1,7 +1,7 @@
 <p align="center"><img src="frontend/public/favicon.png" width="120" alt="NaviDock" /></p>
 <h1 align="center">NaviDock</h1>
 <p align="center"><em>从内网和外网访问自己的 NAS 服务</em></p>
-<p align="center"><img src="docs/readme/badges.svg" alt="backend: Go, deploy: Docker, storage: SQLite, port: 7530" /></p>
+<p align="center"><img src="docs/readme/badges.zh-CN.svg" alt="后端：Go，部署：Docker，存储：SQLite，端口：7530" /></p>
 <p align="center"><a href="README.md">English</a> | <strong>简体中文</strong></p>
 
 ---
