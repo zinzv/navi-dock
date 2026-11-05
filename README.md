@@ -1,4 +1,10 @@
-# NaviDock
+<p align="center"><img src="frontend/public/favicon.png" width="120" alt="NaviDock" /></p>
+<h1 align="center">NaviDock</h1>
+<p align="center"><em>Open your NAS services at home or away</em></p>
+<p align="center"><img src="docs/readme/badges.svg" alt="backend: Go, deploy: Docker, storage: SQLite, port: 7530" /></p>
+<p align="center"><strong>English</strong> | <a href="README.zh-CN.md">简体中文</a></p>
+
+---
 
 Personal NAS Dashboard · Docker one-click deploy
 
