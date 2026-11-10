@@ -73,3 +73,4 @@ backend/web/
 **/output/**/*.tar.xz
 **/output/**/*.tar.zst
 **/output/**/*.tar.bz2
+.cursor/
